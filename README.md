@@ -7,7 +7,10 @@ A lightweight, installable, offline-first dictation and Markdown editor. Plain H
 - Start/stop browser-based dictation in the browser's language (`navigator.language`).
 - **On-device first:** check for local speech recognition and try to install the required language pack. If it is unavailable or installation fails, fall back to the browser's default speech-recognition service.
 - Show **Offline recognition** for a confirmed on-device session; show **Browser service · may be online** if the browser controls recognition. The latter may send audio to a remote provider; the app cannot reliably determine where the browser processes it.
-- Edit previously recognized text **while dictation continues**. Final results insert at the current textarea cursor position, advancing the caret for the next phrase. Move the cursor to dictate into an earlier paragraph. Existing selections are preserved (dictation inserts after the selection). Interim hypotheses appear immediately near the recording status and below the editor; they may change before finalization.
+- Interim and final speech appear directly in the textarea, without duplicate previews. The dictation position is anchored when recording starts and shifts with edits before it. Moving the editing caret does not redirect speech. Stop, place the caret, and start again to change the dictation position.
+- Edit earlier or later text while speaking, preserving the editing selection and scroll position. Editing the live hypothesis (including its boundaries) stops dictation and keeps your changes; late results are ignored. Inputs whose edit location cannot be established safely also stop dictation.
+- Undo/redo buttons and keyboard shortcuts with bounded, per-note history (up to 60 snapshots per direction, approximately 4 million UTF-16 units, or one larger snapshot). Interim revisions are grouped until finalization or a manual edit. Undo/redo stops dictation first; history is not persisted across reloads.
+- Composition input temporarily defers speech updates until the keyboard commits its text. Browser-ended sessions reconnect automatically after a short delay. Stopping keeps the currently visible words; unfinished words may still need correction.
 - Markdown toolbar appears when the editor receives focus.
 - Autosaved draft and local archive using `localStorage` (only text, not audio recordings).
 - Copy text, use Web Share when supported, export a Markdown file, import TXT/Markdown, and import/export a JSON archive.
@@ -37,6 +40,18 @@ The installed PWA shell and text-editing features work offline after the first s
 ## Development
 
 The entire editor implementation is embedded in `index.html` for straightforward inspection and maintenance. `manifest.webmanifest`, `service-worker.js` and PNG icons are only for PWA integration. No third-party JavaScript or CSS is loaded.
+
+## Tests
+
+The app has no runtime dependencies. Browser tests require Node.js and Playwright:
+
+```sh
+npm install --no-save --package-lock=false playwright
+npx playwright install chromium
+node --test tests/recognition.test.cjs
+```
+
+`CHROMIUM_PATH` may point to an existing Chromium executable. Tests run the actual inline application in Chromium with simulated speech events. They cover live insertion, concurrent editing, selection/scroll preservation, Markdown, undo/redo, composition, reconnects, late events, and saved notes. Real microphone recognition, provider latency, OS keyboard composition and PWA installation still need device testing.
 
 ## License
 

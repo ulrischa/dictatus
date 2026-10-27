@@ -59,8 +59,6 @@
     .tool:hover { background: #fff; border-color: var(--line); }
     .separator { margin: 4px 2px; background: #d6dfea; width: 1px; }
     #editor { width: 100%; display: block; min-height: 380px; max-height: 70vh; resize: vertical; background: #fff; border: 1px solid var(--line); border-radius: 12px; color: var(--text); padding: 16px; line-height: 1.7; font-size: .94rem; font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace; }
-    .interim { margin-top: 8px; border-left: 3px solid #7e91db; padding: 5px 10px; color: #4e6093; background: #f4f6ff; border-radius: 0 8px 8px 0; font-size: .84rem; white-space: pre-wrap; overflow-wrap: anywhere; }
-    .interim[hidden] { display: none; }
     .editor-footer { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin: 8px 0 16px; color: var(--muted); font-size: .78rem; }
     .save-line { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; margin: 0 0 16px; }
     #note-title { flex: 1 1 190px; min-width: 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; color: var(--text); }
@@ -110,6 +108,9 @@
 
         <div class="editor-wrap">
           <div class="toolbar" role="toolbar" aria-label="Markdown formatting">
+            <button class="tool" type="button" id="undo-button" title="Undo (Ctrl/Cmd+Z)">↶ Undo</button>
+            <button class="tool" type="button" id="redo-button" title="Redo (Ctrl/Cmd+Shift+Z)">↷ Redo</button>
+            <span class="separator" aria-hidden="true"></span>
             <button class="tool" type="button" data-format="h1" title="Heading 1" aria-label="Heading 1">H1</button>
             <button class="tool" type="button" data-format="h2" title="Heading 2" aria-label="Heading 2">H2</button>
             <span class="separator" aria-hidden="true"></span>
@@ -126,7 +127,6 @@
           <label class="sr-only" for="editor">Dictation text (Markdown supported)</label>
           <textarea id="editor" spellcheck="true" placeholder="Your dictation appears here. Edit earlier text while continuing to speak."></textarea>
         </div>
-        <div id="interim" class="interim" hidden aria-label="Words awaiting recognition"></div>
         <div class="editor-footer"><span id="word-count">0 words · 0 characters</span><span id="save-state" aria-live="polite">Autosave active</span></div>
 
         <div class="save-line">
@@ -185,6 +185,15 @@
     let recognitionToken = 0;
     let processedFinals = new Set();
     let listeningDetail = '';
+    let dictationRange = null;
+    let editorText = '';
+    let beforeEdit = null;
+    let composing = false;
+    let deferredResult = null;
+    let deferredEnd = null;
+    let speechUndoOpen = false;
+    const undoStack = [];
+    const redoStack = [];
 
     function newId() {
       return typeof window.crypto?.randomUUID === 'function' ? window.crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -356,6 +365,7 @@
       if (!note) return;
       state.activeId = id;
       editor.value = note.text;
+      resetEditorHistory();
       titleInput.value = note.title;
       flushSave();
       updateCount();
@@ -367,6 +377,7 @@
       if (editor.value.trim() || titleInput.value.trim()) saveCurrent(false);
       state.activeId = null;
       editor.value = '';
+      resetEditorHistory();
       titleInput.value = '';
       flushSave();
       updateCount();
@@ -382,6 +393,7 @@
       if (state.activeId === id) {
         state.activeId = null;
         editor.value = '';
+        resetEditorHistory();
         titleInput.value = '';
         updateCount();
       }
@@ -413,33 +425,172 @@
       if (!SpeechRecognitionClass) recordButton.disabled = true;
     }
 
-    function addRecognizedText(spoken) {
-      const text = spoken.trim();
-      if (!text) return;
-
-      // Insert at the current caret without overwriting edits or a selection.
-      // An active selection is preserved; dictation inserts after it.
-      const position = editor.selectionEnd;
-      const previous = editor.value.charAt(position - 1);
-      const next = editor.value.charAt(position);
-      const startsWithPunctuation = /^[.,!?;:)}\]]/u.test(text);
-      const prefix = position === 0 || /[\s([{“‘"']/u.test(previous) || startsWithPunctuation ? '' : ' ';
-      const suffix = next && !/[\s.,!?;:)}\]]/u.test(next) ? ' ' : '';
-
-      // Advance the caret so the next phrase follows unless the user moves it.
-      editor.setRangeText(prefix + text + suffix, position, position, 'end');
-      editor.dispatchEvent(new Event('input', { bubbles: true }));
+    // The live range belongs to dictation, never to the user's editing caret.
+    function editorSnapshot() {
+      return { text: editor.value, start: editor.selectionStart, end: editor.selectionEnd,
+        direction: editor.selectionDirection, top: editor.scrollTop, left: editor.scrollLeft };
     }
 
-    function showInterim(text) {
-      const element = getElement('interim');
-      element.textContent = text ? `Live preview (may change): ${text}` : '';
-      element.hidden = !text;
-      // Show words promptly by the recording status without modifying the editor.
-      if (speechActive && !speechError) {
-        getElement('status-help').textContent = text
-          ? `Live preview · ${text.slice(-180)}` : listeningDetail;
+    function pushHistory(stack, snapshot) {
+      if (stack.at(-1)?.text !== snapshot.text) stack.push(snapshot);
+      // Bound retained history, including large imported documents.
+      let size = stack.reduce((sum, item) => sum + item.text.length, 0);
+      while (stack.length > 60 || (size > 4000000 && stack.length > 1)) size -= stack.shift().text.length;
+      updateHistoryUI();
+    }
+
+    function updateHistoryUI() {
+      getElement('undo-button').disabled = composing || undoStack.length === 0;
+      getElement('redo-button').disabled = composing || redoStack.length === 0;
+    }
+
+    function resetEditorHistory() {
+      editorText = editor.value;
+      beforeEdit = null;
+      undoStack.length = redoStack.length = 0;
+      speechUndoOpen = false;
+      updateHistoryUI();
+    }
+
+    function stopForEditing(message = 'Dictation stopped to protect your edit.') {
+      speechWanted = false;
+      speechActive = false;
+      ++recognitionToken;
+      clearTimeout(restartTimer);
+      const previous = recognition;
+      // Invalidate handlers before aborting: abort may synchronously emit events.
+      recognition = null;
+      dictationRange = null;
+      deferredResult = deferredEnd = null;
+      speechUndoOpen = false;
+      if (previous) { try { previous.abort(); } catch {} }
+      updateRecordingUI();
+      setSpeechStatus('Dictation stopped', message);
+    }
+
+    function restoreHistory(redo = false) {
+      if (composing) return;
+      const source = redo ? redoStack : undoStack;
+      if (!source.length) return;
+      if (dictationRange || speechWanted || recognition) stopForEditing('Undo/redo applied. Start again to continue dictating.');
+      const current = editorSnapshot();
+      const target = source.pop();
+      pushHistory(redo ? undoStack : redoStack, current);
+      editor.value = target.text;
+      editor.setSelectionRange(target.start, target.end, target.direction);
+      editor.scrollTop = target.top;
+      editor.scrollLeft = target.left;
+      editorText = editor.value;
+      beforeEdit = null;
+      updateHistoryUI();
+      scheduleSave();
+    }
+
+    function handleEditorInput(event) {
+      if (event.inputType === 'historyUndo' || event.inputType === 'historyRedo') {
+        // Some native menus deliver a non-cancelable history event.
+        const snapshot = beforeEdit || { ...editorSnapshot(), text: editorText };
+        editor.value = snapshot.text;
+        editor.setSelectionRange(snapshot.start, snapshot.end, snapshot.direction);
+        restoreHistory(event.inputType === 'historyRedo');
+        return;
       }
+      const previous = editorText;
+      const next = editor.value;
+      if (previous === next) { beforeEdit = null; return; }
+      const snapshot = beforeEdit || { ...editorSnapshot(), text: previous };
+      let start = 0;
+      // Bound the prefix by the caret to disambiguate repeated characters.
+      const limit = beforeEdit ? Math.min(snapshot.start, editor.selectionStart) : Math.min(previous.length, next.length);
+      while (start < limit && previous[start] === next[start]) start += 1;
+      let oldEnd = previous.length;
+      let newEnd = next.length;
+      while (oldEnd > start && newEnd > start && previous[oldEnd - 1] === next[newEnd - 1]) {
+        oldEnd -= 1;
+        newEnd -= 1;
+      }
+      if (dictationRange) {
+        const { start: liveStart, end: liveEnd } = dictationRange;
+        const insertion = start === oldEnd;
+        const overlaps = insertion ? start >= liveStart && start <= liveEnd
+          : (start < liveEnd && oldEnd > liveStart) || (liveStart === liveEnd && start <= liveStart && oldEnd >= liveStart);
+        if (overlaps || !beforeEdit) {
+          stopForEditing();
+        } else if (oldEnd <= liveStart) {
+          const delta = newEnd - oldEnd;
+          dictationRange.start += delta;
+          dictationRange.end += delta;
+        }
+      }
+      if (!composing || !speechUndoOpen) {
+        pushHistory(undoStack, snapshot);
+        redoStack.length = 0;
+      }
+      speechUndoOpen = composing;
+      editorText = next;
+      beforeEdit = null;
+      updateHistoryUI();
+      scheduleSave();
+    }
+
+    function speechText(text, position, end) {
+      if (!text) return '';
+      const previous = editor.value.charAt(position - 1);
+      const next = editor.value.charAt(end);
+      const prefix = position === 0 || /[\s([{“‘"']/u.test(previous) || /^[.,!?;:)}\]]/u.test(text) ? '' : ' ';
+      const suffix = next && !/[\s.,!?;:)}\]]/u.test(next) ? ' ' : '';
+      return prefix + text + suffix;
+    }
+
+    function replaceSpeech(text, final = false) {
+      if (!dictationRange) return;
+      const { start, end } = dictationRange;
+      const replacement = speechText(text, start, end);
+      const snapshot = editorSnapshot();
+      const follow = snapshot.start === snapshot.end && snapshot.end === end;
+      const nearBottom = snapshot.top + editor.clientHeight >= editor.scrollHeight - 40;
+      // Keep separator whitespace outside the next phrase so punctuation can attach.
+      const nextAnchor = start + replacement.length - (final && replacement.endsWith(' ') ? 1 : 0);
+      if (editor.value.slice(start, end) !== replacement) {
+        if (!speechUndoOpen) {
+          pushHistory(undoStack, snapshot);
+          redoStack.length = 0;
+          speechUndoOpen = true;
+        }
+        const mapPosition = (position, selectionEnd = false) =>
+          position === start && selectionEnd && snapshot.start !== snapshot.end ? start
+          : position < start ? position
+          : position >= end ? position + replacement.length - (end - start)
+          : start + Math.min(position - start, replacement.length);
+        editor.setRangeText(replacement, start, end, 'preserve');
+        editor.setSelectionRange(follow ? nextAnchor : mapPosition(snapshot.start),
+          follow ? nextAnchor : mapPosition(snapshot.end, true), snapshot.direction);
+        // Never steal focus or scroll away from a correction.
+        editor.scrollTop = snapshot.top;
+        editor.scrollLeft = snapshot.left;
+        if (follow && end === snapshot.text.length && nearBottom) {
+          editor.scrollTop = editor.scrollHeight;
+        }
+        editorText = editor.value;
+        scheduleSave();
+        updateHistoryUI();
+      }
+      dictationRange.end = start + replacement.length;
+      if (final) {
+        dictationRange.start = dictationRange.end = nextAnchor;
+        if (follow) {
+          const top = editor.scrollTop;
+          editor.setSelectionRange(nextAnchor, nextAnchor);
+          editor.scrollTop = top;
+        }
+        speechUndoOpen = false;
+      }
+    }
+
+    function finishSpeechSegment() {
+      // Preserve the last visible hypothesis if the engine ends without a final result.
+      if (dictationRange) dictationRange.start = dictationRange.end;
+      speechUndoOpen = false;
     }
 
     async function selectRecognitionMode() {
@@ -476,7 +627,6 @@
       if (!speechWanted || token !== recognitionToken) return;
       setMode(mode);
       processedFinals = new Set();
-      showInterim('');
       speechError = '';
       const instance = new SpeechRecognitionClass();
       recognition = instance;
@@ -494,7 +644,13 @@
         setSpeechStatus('Listening…', listeningDetail);
       };
       instance.onresult = (event) => {
-        if (recognition !== instance) return;
+        if (recognition !== instance || !dictationRange) return;
+        if (composing) {
+          deferredResult = () => instance.onresult(event);
+          return;
+        }
+        // Reconcile all uncommitted hypotheses; resultIndex alone misses removals.
+        const finals = [];
         const interim = [];
         for (let i = 0; i < event.results.length; i += 1) {
           const result = event.results[i];
@@ -502,13 +658,12 @@
           if (result.isFinal) {
             if (!processedFinals.has(i)) {
               processedFinals.add(i);
-              addRecognizedText(transcript);
+              if (transcript) finals.push(transcript);
             }
-          } else if (transcript) {
-            interim.push(transcript);
-          }
+          } else if (transcript) interim.push(transcript);
         }
-        showInterim(interim.join(' '));
+        if (finals.length) replaceSpeech(finals.join(' '), true);
+        replaceSpeech(interim.join(' '));
       };
       instance.onerror = (event) => {
         if (recognition !== instance) return;
@@ -536,14 +691,16 @@
       };
       instance.onend = () => {
         if (recognition !== instance) return;
+        if (composing) { deferredEnd = () => instance.onend(); return; }
+        finishSpeechSegment();
         recognition = null;
         speechActive = false;
-        showInterim('');
         if (editor.value.trim()) saveCurrent(false);
         updateRecordingUI();
+        if (!speechWanted) dictationRange = null;
         if (speechWanted) {
           setSpeechStatus('Reconnecting…', 'The browser ended this recognition session.');
-          restartTimer = setTimeout(startRecognition, 700);
+          restartTimer = setTimeout(startRecognition, 250);
         } else if (!speechError || speechError === 'aborted') {
           setSpeechStatus('Dictation stopped', 'Ready to edit, copy or share.');
         }
@@ -571,22 +728,15 @@
         return;
       }
       if (speechWanted) {
-        speechWanted = false;
-        ++recognitionToken;
-        clearTimeout(restartTimer);
-        setSpeechStatus('Stopping dictation…', 'Saving final recognized words.');
-        if (recognition) {
-          try { recognition.stop(); } catch (error) { console.warn('Could not stop recognition:', error); }
-        } else {
-          speechActive = false;
-          showInterim('');
-          setSpeechStatus('Dictation stopped', 'Ready to edit, copy or share.');
-          if (editor.value.trim()) saveCurrent(false);
-        }
-        updateRecordingUI();
+        // Stop immediately; late results must not rewrite text the user starts editing.
+        stopForEditing('Ready to edit, copy or share.');
+        if (editor.value.trim()) saveCurrent(false);
         return;
       }
       if (recognition) return;
+      if (composing) return;
+      dictationRange = { start: editor.selectionEnd, end: editor.selectionEnd };
+      speechUndoOpen = false;
       speechWanted = true;
       forceBrowserService = false;
       updateRecordingUI();
@@ -597,6 +747,7 @@
       const start = editor.selectionStart;
       const end = editor.selectionEnd;
       const text = editor.value.slice(start, end) || placeholder;
+      beforeEdit = editorSnapshot();
       editor.setRangeText(before + text + after, start, end, 'select');
       editor.focus();
       editor.setSelectionRange(start + before.length, start + before.length + text.length);
@@ -615,6 +766,7 @@
       let number = 0;
       const replacement = original.slice(start, end).split('\n').map((line) =>
         (type === 'number' ? `${++number}. ` : prefixes[type]) + line).join('\n');
+      beforeEdit = editorSnapshot();
       editor.setRangeText(replacement, start, end, 'select');
       editor.focus();
       editor.setSelectionRange(start, start + replacement.length);
@@ -622,6 +774,7 @@
     }
 
     function formatMarkdown(type) {
+      if (composing) return;
       switch (type) {
         case 'bold': wrapMarkdown('**', '**', 'bold text'); break;
         case 'italic': wrapMarkdown('*', '*', 'italic text'); break;
@@ -726,6 +879,7 @@
       if (editor.value.trim() || titleInput.value.trim()) saveCurrent(false);
       state.activeId = null;
       editor.value = contents;
+      resetEditorHistory();
       titleInput.value = file.name.replace(/\.(?:txt|md|markdown)$/i, '').slice(0, 160);
       saveCurrent(false);
       updateCount();
@@ -738,6 +892,7 @@
       if (file.size > 10 * 1024 * 1024) { toast('Maximum import size: 10 MB.'); return; }
       try {
         const contents = await file.text();
+        if (!canSwitchNotes()) return;
         if (/\.json$/i.test(file.name)) importArchive(contents);
         else if (/\.(?:txt|md|markdown)$/i.test(file.name)) importText(file, contents);
         else throw new Error('Supported formats: JSON, TXT and Markdown.');
@@ -760,7 +915,45 @@
       event.target.value = '';
     });
     getElement('archive-search').addEventListener('input', renderArchive);
-    editor.addEventListener('input', scheduleSave);
+    editor.addEventListener('beforeinput', (event) => {
+      beforeEdit = editorSnapshot();
+      if ((event.inputType === 'historyUndo' || event.inputType === 'historyRedo') && event.cancelable) {
+        event.preventDefault();
+        restoreHistory(event.inputType === 'historyRedo');
+      }
+    });
+    editor.addEventListener('input', handleEditorInput);
+    editor.addEventListener('keydown', (event) => {
+      if (event.isComposing || composing || event.altKey || !(event.ctrlKey || event.metaKey)) return;
+      const key = event.key.toLowerCase();
+      if (key === 'z' || key === 'y') {
+        event.preventDefault();
+        restoreHistory(key === 'y' || event.shiftKey);
+      }
+    });
+    editor.addEventListener('compositionstart', () => {
+      composing = true;
+      speechUndoOpen = false;
+      updateHistoryUI();
+    });
+    editor.addEventListener('compositionend', () => {
+      // Wait for the final input event before applying queued speech updates.
+      setTimeout(() => {
+        composing = false;
+        speechUndoOpen = false;
+        const result = deferredResult;
+        const end = deferredEnd;
+        deferredResult = deferredEnd = null;
+        result?.();
+        end?.();
+        updateHistoryUI();
+      }, 0);
+    });
+    for (const [id, redo] of [['undo-button', false], ['redo-button', true]]) {
+      const button = getElement(id);
+      button.addEventListener('pointerdown', event => event.preventDefault());
+      button.addEventListener('click', () => restoreHistory(redo));
+    }
     titleInput.addEventListener('input', scheduleSave);
     document.querySelectorAll('[data-format]').forEach((button) => {
       // Preserve the textarea selection when using the toolbar with a mouse.
@@ -769,9 +962,7 @@
     });
     window.addEventListener('pagehide', () => {
       persist();
-      speechWanted = false;
-      ++recognitionToken;
-      if (recognition) { try { recognition.abort(); } catch {} }
+      stopForEditing();
     });
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'hidden') persist();
@@ -779,6 +970,7 @@
 
     loadState();
     editor.value = state.draft.text;
+    resetEditorHistory();
     titleInput.value = state.draft.title;
     updateCount();
     renderArchive();
