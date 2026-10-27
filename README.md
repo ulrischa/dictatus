@@ -33,6 +33,47 @@ Local recognition depends on experimental browser support and the availability o
 
 The installed PWA shell and text-editing features work offline after the first successful cache installation. Dictation works offline **only when actual on-device recognition is supported and the language pack is installed**. Browser storage is bound to the page's origin and can be deleted by browser settings or data clearing. Export JSON backups regularly.
 
+## Fast dictation controls
+
+The main button pauses immediately and keeps the currently visible text. Resume at the textarea cursor with the button or **Ctrl/Cmd + Shift + Space**. The shortcut is ignored during keyboard composition and key repeat. The recording button stays within reach when scrolling the editor panel. Pause may discard audio for which the browser has not delivered text yet; review unfinished words.
+
+Editing the live hypothesis pauses recognition to protect the edit. Resume explicitly when ready; it never restarts automatically after a manual pause. Browser-ended sessions still reconnect automatically while recording remains enabled.
+
+## Keyboard shortcuts
+
+Open **Keyboard shortcuts** in the app for the complete action list. Button tooltips and `aria-keyshortcuts` expose the same bindings.
+
+| Action | Shortcut |
+| --- | --- |
+| Pause / resume at cursor | Ctrl/Cmd + Shift + Space |
+| New / save note | Alt + Shift + N / S |
+| Copy / share text | Alt + Shift + C / H |
+| Export Markdown / archive | Alt + Shift + E / A |
+| Import / search archive | Alt + Shift + I / F |
+| Toggle speech settings / save them | Alt + Shift + D / W |
+| Toggle shortcut help | Alt + Shift + K |
+| Undo / redo editor change | Alt + Shift + U / R |
+| Undo / redo while editing | Ctrl/Cmd + Z / Ctrl/Cmd + Shift + Z; Ctrl + Y |
+| H1 / H2 / bold / italic / strike | Ctrl/Cmd + Shift + 1 / 2 / 3 / 4 / 5 |
+| Code / bullet list / numbered list / quote / link | Ctrl/Cmd + Shift + 6 / 7 / 8 / 9 / 0 |
+| Open / delete a focused archive note | Enter / Delete (deletion asks for confirmation) |
+
+Use the top number row for Markdown shortcuts. Native keyboard navigation (Tab, Enter, Space, arrows) operates all settings and controls. App shortcuts ignore keyboard composition, repeat and AltGraph; Ctrl/Cmd+Z remains native in settings textareas. Disabled actions remain disabled when invoked by shortcut. Browser/OS shortcuts may take precedence; all actions remain available through visible controls.
+
+## Speech commands and dictionary
+
+Open **Speech commands & dictionary** below the editor actions. Save settings before starting/resuming. Saving during dictation pauses it so a new session uses the updated configuration.
+
+- **Explicit (default):** say “Satzzeichen Komma” or “punctuation comma”. The ordinary word “Punkt” remains literal. Available punctuation: Punkt / period / full stop, Komma / comma, Fragezeichen / question mark, Ausrufezeichen / exclamation mark, Doppelpunkt / colon, Semikolon / semicolon.
+- **Short:** the same punctuation names work without the prefix. This can replace ordinary words; use Explicit or Off when discussing punctuation literally.
+- In either command mode, “neue Zeile” / “new line” creates a newline; “neuer Absatz” / “new paragraph” creates a blank line. Speak a complete command together. Commands split across finalized recognition results are not combined.
+- **Off:** no app-level command conversion. The browser may still produce its own punctuation.
+- **Automatic punctuation:** opt-in, enabled only if the browser exposes `unspokenPunctuation`. The capability status reports when unavailable. Accuracy depends on the engine.
+- **Names & specialist words:** one per line, up to 100 entries. The app sends recognition hints using `SpeechRecognitionPhrase` with a moderate boost when supported. Hints are not training and may be sent to a remote recognition provider. A rejected hint feature retries without hints.
+- **Corrections:** one literal `heard phrase => intended text` rule per line, up to 100. Matching is case-insensitive and respects Unicode word boundaries. Longest matches win; replacements do not cascade. Example: `elf u => LfU`. Corrections affect new speech only, after command processing, never manually edited text.
+
+Speech settings persist locally under `dictatus_speech_settings_v1`. JSON archive exports include them; import asks whether to replace current settings. Archives without settings remain compatible. No external scripts, dictionaries or services are added by these features.
+
 ## Data formats
 
 `Export archive` writes a `dictatus-YYYY-MM-DD.json` file containing notes and any unfiled draft. `Import` merges JSON notes by ID (existing IDs are skipped). Legacy exports (`app: "diktat-single-file"`, version 1) are also accepted. TXT and Markdown imports create a new archived note.

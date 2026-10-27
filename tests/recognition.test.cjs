@@ -246,3 +246,226 @@ test('edits without beforeinput are preserved and stop dictation conservatively'
   assert.equal(await value(page), 'Changed Hello nice world!');
   assert.equal(await page.locator('#record-button').getAttribute('aria-pressed'), 'false');
 });
+
+async function settings(page, { commands = 'explicit', words = '', replacements = '', punctuation = false } = {}) {
+  if (await page.locator('#record-button').getAttribute('aria-pressed') === 'true') await page.locator('#record-button').click();
+  await page.locator('#speech-settings').evaluate(e => e.open = true);
+  await page.locator('#command-mode').selectOption(commands);
+  await page.locator('#custom-words').fill(words);
+  await page.locator('#custom-replacements').fill(replacements);
+  await page.locator('#auto-punctuation').setChecked(punctuation);
+  await page.locator('#save-speech-settings').click();
+  await page.locator('#editor').focus();
+  await page.locator('#editor').evaluate(e => e.setSelectionRange(e.value.length, e.value.length));
+  await page.locator('#record-button').click();
+}
+
+test('explicit commands preserve literal words and insert punctuation and paragraphs', async t => {
+  const page = await setup(t, '', 0);
+  await settings(page);
+  await emit(page, [['Ein wichtiger Punkt Satzzeichen Komma wirklich Satzzeichen Punkt neuer Absatz Weiter', true]]);
+  assert.equal(await value(page), 'Ein wichtiger Punkt, wirklich.\n\nWeiter');
+});
+
+test('simple commands and newlines remain formatted across speech events', async t => {
+  const page = await setup(t, '', 0);
+  await settings(page, { commands: 'simple' });
+  await emit(page, [['Hallo Komma Welt Punkt neue Zeile', true]]);
+  await emit(page, [['Hallo Komma Welt Punkt neue Zeile', true], ['Weiter', true]]);
+  assert.equal(await value(page), 'Hallo, Welt.\nWeiter');
+});
+
+test('dictionary replacements are literal, case insensitive, whole phrase and non-cascading', async t => {
+  const page = await setup(t, '', 0);
+  await settings(page, { commands: 'off', replacements: 'foo => bar\nbar => Baz\nelf u => LfU' });
+  await emit(page, [['FOO bar food elf u', true]]);
+  assert.equal(await value(page), 'bar Baz food LfU');
+});
+
+test('speech settings persist across reloads and leave manually typed text unchanged', async t => {
+  const page = await setup(t, '', 0);
+  await settings(page, { replacements: 'foo => Fachwort', words: 'Ökotoxikologie\nLfU' });
+  await page.locator('#record-button').click();
+  await page.reload();
+  await page.locator('#speech-settings').evaluate(e => e.open = true);
+  assert.equal(await page.locator('#custom-words').inputValue(), 'Ökotoxikologie\nLfU');
+  await page.locator('#editor').fill('foo');
+  assert.equal(await value(page), 'foo');
+});
+
+test('shortcut pauses and resumes at the editing caret without accepting late events', async t => {
+  const page = await setup(t, 'Hello', 5);
+  await emit(page, [['friend', false]]);
+  await page.keyboard.press('Control+Shift+Space');
+  await emit(page, [['late', true]]);
+  assert.equal(await value(page), 'Hello friend');
+  await page.locator('#editor').focus();
+  await page.locator('#editor').evaluate(e => e.setSelectionRange(0, 0));
+  await page.keyboard.press('Control+Shift+Space');
+  await emit(page, [['Start', true]]);
+  assert.equal(await value(page), 'Start Hello friend');
+});
+
+test('invalid replacement settings are rejected without losing previous settings', async t => {
+  const page = await setup(t, '', 0);
+  await settings(page, { replacements: 'foo => Bar' });
+  await page.locator('#record-button').click();
+  await page.locator('#custom-replacements').fill('invalid line');
+  await page.locator('#save-speech-settings').click();
+  assert.match(await page.locator('#settings-status').textContent(), /line 1/i);
+  await page.reload();
+  assert.equal(await page.locator('#custom-replacements').inputValue(), 'foo => Bar');
+});
+
+test('supported recognition receives word hints and automatic punctuation', async t => {
+  const page = await setup(t, '', 0);
+  await page.evaluate(() => {
+    SpeechRecognition.prototype.phrases = [];
+    SpeechRecognition.prototype.unspokenPunctuation = false;
+    window.SpeechRecognitionPhrase = class { constructor(phrase, boost) { this.phrase = phrase; this.boost = boost; } };
+  });
+  await settings(page, { words: 'LfU', replacements: 'elf u => LfU', punctuation: true });
+  assert.deepEqual(await page.evaluate(() => sessions.at(-1).phrases.map(p => [p.phrase, p.boost])), [['LfU', 3]]);
+  assert.equal(await page.evaluate(() => sessions.at(-1).unspokenPunctuation), true);
+});
+
+test('unsupported optional features report fallback while corrections still work', async t => {
+  const page = await setup(t, '', 0);
+  await settings(page, { words: 'LfU', replacements: 'elf u => LfU', punctuation: true });
+  assert.match(await page.locator('#speech-capabilities').textContent(), /Word hints unavailable/);
+  assert.match(await page.locator('#speech-capabilities').textContent(), /Automatic punctuation unavailable/);
+  await emit(page, [['elf u', true]]);
+  assert.equal(await value(page), 'LfU');
+});
+
+test('rejected hints restart once without hints and reject stale results', async t => {
+  const page = await setup(t, '', 0);
+  await page.evaluate(() => {
+    SpeechRecognition.prototype.phrases = [];
+    window.SpeechRecognitionPhrase = class { constructor(phrase) { this.phrase = phrase; } };
+  });
+  await settings(page, { words: 'LfU', replacements: 'elf u => LfU' });
+  const count = await page.evaluate(() => sessions.length);
+  await page.evaluate(() => sessions.at(-1).onerror({ error: 'phrases-not-supported' }));
+  await page.waitForFunction(count => sessions.length > count && sessions.at(-1).onresult, count);
+  assert.deepEqual(await page.evaluate(() => sessions.at(-1).phrases), []);
+  await emit(page, [['elf u', true]]);
+  assert.equal(await value(page), 'LfU');
+});
+
+test('archive export and import round-trip settings with explicit replacement consent', async t => {
+  const page = await setup(t, '', 0);
+  await settings(page, { words: 'LfU', replacements: 'elf u => LfU' });
+  await page.locator('#record-button').click();
+  const pending = page.waitForEvent('download');
+  await page.locator('#export-button').click();
+  const download = await pending;
+  const archive = JSON.parse(fs.readFileSync(await download.path(), 'utf8'));
+  assert.equal(archive.speechSettings.words, 'LfU');
+  archive.speechSettings.words = 'Fronius';
+  page.once('dialog', dialog => dialog.accept());
+  await page.locator('#file-import').setInputFiles({ name: 'archive.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(archive)) });
+  await page.waitForFunction(() => document.getElementById('custom-words').value === 'Fronius');
+  await page.reload();
+  assert.equal(await page.locator('#custom-words').inputValue(), 'Fronius');
+});
+
+test('replacement metacharacters and replacement dollar signs stay literal', async t => {
+  const page = await setup(t, '', 0);
+  await settings(page, { commands: 'off', replacements: 'c++ => C plus plus\nprice => $&\nS => small' });
+  await emit(page, [['c++ price ſ', true]]);
+  assert.equal(await value(page), 'C plus plus $& small');
+});
+
+test('keyboard actions save, create and find notes without changing existing editor shortcuts', async t => {
+  const page = await setup(t, 'Keyboard note', 13);
+  await page.keyboard.press('Control+Shift+Space');
+  await page.keyboard.press('Alt+Shift+s');
+  assert.equal(await page.locator('.archive-item').count(), 1);
+  await page.keyboard.press('Alt+Shift+n');
+  assert.equal(await value(page), '');
+  await page.keyboard.press('Alt+Shift+f');
+  assert.equal(await page.locator('#archive-search').evaluate(e => e === document.activeElement), true);
+});
+
+test('keyboard markdown formats the selection and undo restores it', async t => {
+  const page = await setup(t, 'Hello world', 11);
+  await page.keyboard.press('Control+Shift+Space');
+  await page.locator('#editor').focus();
+  await page.locator('#editor').evaluate(e => e.setSelectionRange(0, 5));
+  await page.keyboard.press('Control+Shift+Digit3');
+  assert.equal(await value(page), '**Hello** world');
+  await page.keyboard.press('Control+z');
+  assert.equal(await value(page), 'Hello world');
+});
+
+test('every app action shortcut routes to its accessible control', async t => {
+  const page = await setup(t, 'Routing', 7);
+  await page.keyboard.press('Control+Shift+Space');
+  const bindings = [['s','save-button'],['c','copy-button'],['h','share-button'],['e','markdown-export-button'],['a','export-button'],['i','import-button'],['n','new-button'],['d','settings-toggle'],['w','save-speech-settings'],['k','shortcuts-toggle'],['u','undo-button'],['r','redo-button']];
+  await page.evaluate(bindings => {
+    window.shortcutClicks = [];
+    for (const [, id] of bindings) {
+      const button = document.getElementById(id);
+      button.disabled = false;
+      button.addEventListener('click', event => {
+        event.preventDefault(); event.stopImmediatePropagation();
+        window.shortcutClicks.push(id);
+      }, { capture: true });
+    }
+  }, bindings);
+  for (const [key, id] of bindings) {
+    await page.keyboard.press(`Alt+Shift+${key}`);
+    assert.equal(await page.evaluate(() => shortcutClicks.at(-1)), id);
+    assert.match(await page.locator(`#${id}`).getAttribute('aria-keyshortcuts'), /Alt\+Shift/);
+  }
+});
+
+test('all ten Markdown shortcuts format the selected text', async t => {
+  const page = await setup(t, '', 0);
+  await page.keyboard.press('Control+Shift+Space');
+  const expected = ['# word','## word','**word**','*word*','~~word~~','`word`','- word','1. word','> word','[word](https://)'];
+  for (let i = 0; i < expected.length; i++) {
+    await page.locator('#editor').fill('word');
+    await page.locator('#editor').evaluate(e => e.setSelectionRange(0, 4));
+    await page.keyboard.press(`Control+Shift+Digit${(i + 1) % 10}`);
+    assert.equal(await value(page), expected[i]);
+  }
+});
+
+test('import and export shortcuts operate the file chooser and download', async t => {
+  const page = await setup(t, 'Export me', 9);
+  await page.keyboard.press('Control+Shift+Space');
+  const pendingDownload = page.waitForEvent('download');
+  await page.keyboard.press('Alt+Shift+e');
+  assert.equal(fs.readFileSync(await (await pendingDownload).path(), 'utf8'), 'Export me');
+  const pendingChooser = page.waitForEvent('filechooser');
+  await page.keyboard.press('Alt+Shift+i');
+  await (await pendingChooser).setFiles({ name: 'note.md', mimeType: 'text/markdown', buffer: Buffer.from('Imported by keyboard') });
+  await page.waitForFunction(() => document.getElementById('editor').value === 'Imported by keyboard');
+});
+
+test('archive notes open and delete with keyboard and confirmation', async t => {
+  const page = await setup(t, 'Archived', 8);
+  await page.keyboard.press('Control+Shift+Space');
+  await page.keyboard.press('Alt+Shift+n');
+  await page.locator('.archive-open').first().focus();
+  await page.keyboard.press('Enter');
+  assert.equal(await value(page), 'Archived');
+  await page.locator('.archive-open').first().focus();
+  page.once('dialog', dialog => dialog.accept());
+  await page.keyboard.press('Delete');
+  assert.equal(await page.locator('.archive-item').count(), 0);
+});
+
+test('shortcuts ignore composition and key repeat and retain native typing', async t => {
+  const page = await setup(t, '', 0);
+  await page.locator('#editor').evaluate(e => {
+    e.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', code: 'Space', ctrlKey: true, shiftKey: true, isComposing: true, bubbles: true }));
+    e.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', code: 'Space', ctrlKey: true, shiftKey: true, repeat: true, bubbles: true }));
+  });
+  assert.equal(await page.locator('#record-button').getAttribute('aria-pressed'), 'true');
+  await page.keyboard.press('Control+Shift+Space');
+  await page.locator('#editor').fill('Ordinary typing');
+  assert.equal(await value(page), 'Ordinary typing');
+});

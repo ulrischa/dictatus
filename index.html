@@ -42,7 +42,7 @@
     .button.primary:hover:not(:disabled) { background: var(--primary-hover); }
     .button.recording { background: var(--red); border-color: var(--red); color: #fff; }
     .button.recording:hover:not(:disabled) { background: #942339; }
-    .button-wide { width: 100%; min-height: 66px; font-size: 1.03rem; border-radius: 12px; }
+    .button-wide { position: sticky; top: 8px; z-index: 2; width: 100%; min-height: 66px; font-size: 1.03rem; border-radius: 12px; }
     .speech-info { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; padding: 12px 1px 13px; }
     .status-title { display: flex; align-items: center; gap: 9px; font-size: .85rem; font-weight: 650; }
     .status-caption { font-size: .78rem; color: var(--muted); margin: 2px 0 0 18px; max-width: min(68vw, 670px); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
@@ -64,6 +64,17 @@
     #note-title { flex: 1 1 190px; min-width: 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; color: var(--text); }
     .autosave { color: #137353; font-size: .76rem; font-weight: 650; white-space: nowrap; }
     .autosave.error { color: var(--red); }
+    #keyboard-shortcuts { margin-top: 14px; font-size: .82rem; }
+    #keyboard-shortcuts summary { cursor: pointer; font-weight: 650; }
+    #keyboard-shortcuts table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    #keyboard-shortcuts td, #keyboard-shortcuts th { text-align: left; padding: 5px; border-bottom: 1px solid var(--line); }
+    #speech-settings { margin-top: 18px; border-top: 1px solid var(--line); padding-top: 12px; }
+    #speech-settings summary { cursor: pointer; font-weight: 650; font-size: .88rem; }
+    #speech-settings label { display: block; margin: 12px 0 4px; font-size: .85rem; }
+    #speech-settings textarea, #speech-settings select { width: 100%; padding: 9px; border: 1px solid var(--line); border-radius: 8px; background: white; color: var(--text); font: inherit; }
+    #speech-settings textarea { min-height: 90px; resize: vertical; }
+    .settings-help, #settings-status, #speech-capabilities { font-size: .78rem; color: var(--muted); }
+    .quick-help { font-size: .76rem; color: var(--muted); margin: 7px 0 0; }
     .bottom-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
     h2 { margin: 0; font-size: 1.1rem; letter-spacing: -.02em; }
     .archive-heading { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
@@ -97,7 +108,8 @@
 
     <div class="layout">
       <section class="panel" aria-label="Dictation editor">
-        <button type="button" id="record-button" class="button primary button-wide" aria-pressed="false">🎙 Start dictation</button>
+        <button type="button" id="record-button" aria-keyshortcuts="Control+Shift+Space Meta+Shift+Space" class="button primary button-wide" aria-pressed="false">🎙 Start dictation</button>
+        <p class="quick-help">Ctrl/Cmd + Shift + Space: pause / resume at the cursor. Pausing keeps the visible text.</p>
         <div class="speech-info" role="status" aria-live="polite">
           <div>
             <div class="status-title"><span class="dot" id="status-dot"></span><span id="status-title">Ready to dictate</span></div>
@@ -140,6 +152,32 @@
           <button class="button" type="button" id="share-button">↗ Share</button>
           <button class="button" type="button" id="markdown-export-button">↓ Export Markdown</button>
         </div>
+        <details id="speech-settings">
+          <summary id="settings-toggle">Speech commands &amp; dictionary</summary>
+          <label for="command-mode">Spoken commands (German / English)</label>
+          <select id="command-mode">
+            <option value="off">Off</option>
+            <option value="explicit" selected>Explicit: “Satzzeichen Komma” / “punctuation comma”</option>
+            <option value="simple">Short: “Komma” / “comma” (may replace literal words)</option>
+          </select>
+          <p class="settings-help">Commands: Punkt / period, Komma / comma, Fragezeichen / question mark, Ausrufezeichen / exclamation mark, Doppelpunkt / colon, Semikolon / semicolon. Say “neue Zeile” / “new line” or “neuer Absatz” / “new paragraph” in either command mode. Speak each complete command together.</p>
+          <label><input type="checkbox" id="auto-punctuation"> Automatic punctuation, when supported</label>
+          <label for="custom-words">Names &amp; specialist words — one per line</label>
+          <textarea id="custom-words" rows="3" placeholder="Ökotoxikologie&#10;Fronius" spellcheck="false" aria-describedby="dictionary-help"></textarea>
+          <p id="dictionary-help" class="settings-help">Up to 100 entries. Recognition hints depend on browser support; they do not train the recognizer. Hints may be sent to the browser's recognition provider.</p>
+          <label for="custom-replacements">Corrections — heard phrase =&gt; intended text</label>
+          <textarea id="custom-replacements" rows="3" placeholder="elf u =&gt; LfU" spellcheck="false" aria-describedby="replacement-help"></textarea>
+          <p id="replacement-help" class="settings-help">Up to 100 rules. Literal whole phrases, case-insensitive. Applied only to new speech, never to your typed text. Settings are saved locally and included in archive exports.</p>
+          <button type="button" class="button" id="save-speech-settings">Save speech settings</button>
+          <p id="settings-status" role="status"></p>
+          <p id="speech-capabilities">Recognition capabilities are checked when dictation starts.</p>
+        </details>
+        <details id="keyboard-shortcuts">
+          <summary id="shortcuts-toggle">Keyboard shortcuts</summary>
+          <p>App actions: Alt + Shift + letter. Markdown: Ctrl/Cmd + Shift + number (top row). Shortcuts are inactive during keyboard composition.</p>
+          <table><thead><tr><th scope="col">Action</th><th scope="col">Shortcut</th></tr></thead><tbody id="shortcut-list"></tbody></table>
+          <p>In the archive: Tab to a note, Enter to open, Delete to delete (with confirmation). Standard Tab, Enter, Space and arrow keys operate buttons and settings. Browser or operating-system shortcuts may take precedence.</p>
+        </details>
       </section>
 
       <aside class="panel" aria-labelledby="archive-heading">
@@ -161,6 +199,7 @@
     'use strict';
 
     const STORAGE_KEY = 'dictatus_v1';
+    const SETTINGS_KEY = 'dictatus_speech_settings_v1';
     const LEGACY_STORAGE_KEY = 'diktat_single_file_v1';
     const SpeechRecognitionClass = window.SpeechRecognition || window.webkitSpeechRecognition;
     const getElement = (id) => document.getElementById(id);
@@ -186,6 +225,11 @@
     let processedFinals = new Set();
     let listeningDetail = '';
     let dictationRange = null;
+    let paused = false;
+    let disableHints = false;
+    let speechSettings = { commands: 'explicit', words: '', replacements: '', punctuation: false };
+    let replacementRules = [];
+    let replacementPattern = null;
     let editorText = '';
     let beforeEdit = null;
     let composing = false;
@@ -194,6 +238,124 @@
     let speechUndoOpen = false;
     const undoStack = [];
     const redoStack = [];
+
+    function validateSpeechSettings(value) {
+      if (!value || !['off', 'explicit', 'simple'].includes(value.commands) ||
+          typeof value.words !== 'string' || typeof value.replacements !== 'string' ||
+          typeof value.punctuation !== 'boolean') throw new Error('Invalid speech settings.');
+      for (const key of ['words', 'replacements']) {
+        const lines = value[key].split(/\r?\n/).filter(line => line.trim());
+        if (lines.length > 100 || value[key].length > 30000) throw new Error('Use at most 100 entries per field.');
+        for (const line of lines) {
+          if (line.length > 300) throw new Error('Each entry must be at most 300 characters.');
+        }
+      }
+      const seen = new Set();
+      value.replacements.split(/\r?\n/).forEach((line, index) => {
+        if (!line.trim()) return;
+        const parts = line.split('=>');
+        if (parts.length !== 2 || !parts[0].trim() || !parts[1].trim()) {
+          throw new Error(`Replacement line ${index + 1}: use heard phrase => intended text.`);
+        }
+        const key = parts[0].trim().toLowerCase();
+        if (seen.has(key)) throw new Error(`Duplicate heard phrase on line ${index + 1}.`);
+        seen.add(key);
+      });
+      return { commands: value.commands, words: value.words.trim(), replacements: value.replacements.trim(), punctuation: value.punctuation };
+    }
+
+    function escapePattern(text) {
+      return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+
+    function applySpeechSettings(settings) {
+      speechSettings = settings;
+      replacementRules = settings.replacements.split(/\r?\n/).filter(line => line.trim()).map(line => {
+        const [heard, intended] = line.split('=>');
+        return { heard: heard.trim(), intended: intended.trim(), pattern: new RegExp('^' + escapePattern(heard.trim()) + '$', 'iu') };
+      }).sort((a, b) => b.heard.length - a.heard.length);
+      replacementPattern = replacementRules.length ? new RegExp(
+        '(?<![\\p{L}\\p{N}_])(?:' + replacementRules.map(rule => escapePattern(rule.heard)).join('|') + ')(?![\\p{L}\\p{N}_])', 'giu') : null;
+      getElement('command-mode').value = settings.commands;
+      getElement('custom-words').value = settings.words;
+      getElement('custom-replacements').value = settings.replacements;
+      getElement('auto-punctuation').checked = settings.punctuation;
+    }
+
+    function loadSpeechSettings() {
+      try {
+        const raw = localStorage.getItem(SETTINGS_KEY);
+        applySpeechSettings(raw ? validateSpeechSettings(JSON.parse(raw)) : speechSettings);
+      } catch {
+        applySpeechSettings(speechSettings);
+        getElement('settings-status').textContent = 'Speech settings could not be loaded. Defaults are active.';
+      }
+    }
+
+    function saveSpeechSettings() {
+      try {
+        const settings = validateSpeechSettings({
+          commands: getElement('command-mode').value,
+          words: getElement('custom-words').value,
+          replacements: getElement('custom-replacements').value,
+          punctuation: getElement('auto-punctuation').checked
+        });
+        localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+        if (speechWanted || recognition) stopForEditing('Settings saved. Resume at the cursor when ready.');
+        applySpeechSettings(settings);
+        getElement('settings-status').textContent = 'Saved. Settings apply to the next dictation session.';
+      } catch (error) {
+        getElement('settings-status').textContent = error.name === 'QuotaExceededError'
+          ? 'Storage is full. Settings were not saved.' : error.message;
+      }
+    }
+
+    function transformSpeech(text) {
+      if (speechSettings.commands !== 'off') {
+        const punctuation = {
+          'punkt': '.', 'period': '.', 'full stop': '.', 'komma': ',', 'comma': ',',
+          'fragezeichen': '?', 'question mark': '?', 'ausrufezeichen': '!', 'exclamation mark': '!',
+          'doppelpunkt': ':', 'colon': ':', 'semikolon': ';', 'semicolon': ';'
+        };
+        const prefix = speechSettings.commands === 'explicit' ? '(?:satzzeichen|punctuation)\\s+' : '(?:(?:satzzeichen|punctuation)\\s+)?';
+        const pattern = new RegExp('(?<![\\p{L}\\p{N}_])' + prefix + '(' + Object.keys(punctuation).join('|') + ')(?![\\p{L}\\p{N}_])', 'giu');
+        text = text.replace(pattern, (_, name) => punctuation[name.toLowerCase()]);
+        text = text.replace(/(?<![\p{L}\p{N}_])(?:neuer absatz|new paragraph)(?![\p{L}\p{N}_])/giu, '\n\n')
+          .replace(/(?<![\p{L}\p{N}_])(?:neue zeile|new line)(?![\p{L}\p{N}_])/giu, '\n')
+          .replace(/[ \t]+([.,!?;:])/g, '$1').replace(/[ \t]*\n[ \t]*/g, '\n');
+      }
+      if (replacementPattern) {
+        text = text.replace(replacementPattern, match =>
+          replacementRules.find(rule => rule.pattern.test(match))?.intended ?? match);
+      }
+      return text;
+    }
+
+    function configureSpeechFeatures(instance) {
+      const capabilities = [];
+      const words = [...new Set([...speechSettings.words.split(/\r?\n/).map(word => word.trim()).filter(Boolean),
+        ...replacementRules.map(rule => rule.intended)])];
+      if (words.length) {
+        try {
+          if (disableHints || !('phrases' in instance) || typeof window.SpeechRecognitionPhrase !== 'function') throw new Error('Unavailable');
+          instance.phrases = words.map(word => new window.SpeechRecognitionPhrase(word, 3));
+          capabilities.push('Word hints enabled');
+        } catch {
+          capabilities.push('Word hints unavailable');
+        }
+      }
+      if (speechSettings.punctuation) {
+        try {
+          if (!('unspokenPunctuation' in instance)) throw new Error('Unavailable');
+          instance.unspokenPunctuation = true;
+          capabilities.push('Automatic punctuation enabled');
+        } catch {
+          capabilities.push('Automatic punctuation unavailable');
+        }
+      }
+      if (replacementRules.length) capabilities.push('Local corrections enabled');
+      getElement('speech-capabilities').textContent = capabilities.join(' · ') || 'No optional recognition features requested.';
+    }
 
     function newId() {
       return typeof window.crypto?.randomUUID === 'function' ? window.crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -324,7 +486,15 @@
         const openButton = document.createElement('button');
         openButton.type = 'button';
         openButton.className = 'archive-open';
-        openButton.title = 'Open this note';
+        openButton.title = 'Open this note (Enter); delete it (Delete)';
+        openButton.setAttribute('aria-keyshortcuts', 'Enter Delete');
+        openButton.addEventListener('keydown', event => {
+          if (event.key === 'Delete' && !event.repeat && !event.isComposing && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
+            event.preventDefault();
+            deleteNote(note.id);
+            getElement('archive-search').focus();
+          }
+        });
         const title = document.createElement('span');
         title.className = 'archive-title';
         title.textContent = deriveTitle(note);
@@ -415,7 +585,7 @@
     }
 
     function updateRecordingUI() {
-      recordButton.textContent = speechWanted ? '■ Stop dictation' : '🎙 Start dictation';
+      recordButton.textContent = speechWanted ? 'Ⅱ Pause dictation' : paused ? '▶ Resume at cursor' : '🎙 Start dictation';
       recordButton.classList.toggle('recording', speechWanted);
       recordButton.classList.toggle('primary', !speechWanted);
       recordButton.setAttribute('aria-pressed', String(speechWanted));
@@ -445,6 +615,8 @@
     }
 
     function resetEditorHistory() {
+      paused = false;
+      updateRecordingUI();
       editorText = editor.value;
       beforeEdit = null;
       undoStack.length = redoStack.length = 0;
@@ -453,6 +625,7 @@
     }
 
     function stopForEditing(message = 'Dictation stopped to protect your edit.') {
+      paused = speechWanted || !!recognition || paused;
       speechWanted = false;
       speechActive = false;
       ++recognitionToken;
@@ -537,8 +710,8 @@
       if (!text) return '';
       const previous = editor.value.charAt(position - 1);
       const next = editor.value.charAt(end);
-      const prefix = position === 0 || /[\s([{“‘"']/u.test(previous) || /^[.,!?;:)}\]]/u.test(text) ? '' : ' ';
-      const suffix = next && !/[\s.,!?;:)}\]]/u.test(next) ? ' ' : '';
+      const prefix = /^\s/u.test(text) || position === 0 || /[\s([{“‘"']/u.test(previous) || /^[.,!?;:)}\]]/u.test(text) ? '' : ' ';
+      const suffix = !/\s$/u.test(text) && next && !/[\s.,!?;:)}\]]/u.test(next) ? ' ' : '';
       return prefix + text + suffix;
     }
 
@@ -635,6 +808,7 @@
       instance.interimResults = true;
       instance.maxAlternatives = 1;
       if ('processLocally' in instance) instance.processLocally = mode === 'offline';
+      configureSpeechFeatures(instance);
 
       instance.onstart = () => {
         if (recognition !== instance) return;
@@ -662,12 +836,18 @@
             }
           } else if (transcript) interim.push(transcript);
         }
-        if (finals.length) replaceSpeech(finals.join(' '), true);
-        replaceSpeech(interim.join(' '));
+        if (finals.length) replaceSpeech(transformSpeech(finals.join(' ')), true);
+        replaceSpeech(transformSpeech(interim.join(' ')));
       };
       instance.onerror = (event) => {
         if (recognition !== instance) return;
         speechError = event.error || 'unknown';
+        if (speechError === 'phrases-not-supported' && !disableHints) {
+          disableHints = true;
+          getElement('speech-capabilities').textContent = 'Word hints rejected by this service. Retrying without hints; local corrections remain active.';
+          try { instance.abort(); } catch {}
+          return;
+        }
         if (mode === 'offline' && ['language-not-supported', 'service-not-allowed', 'network'].includes(speechError)) {
           forceBrowserService = true;
           setSpeechStatus('Offline language unavailable', 'Switching to browser recognition…');
@@ -729,7 +909,7 @@
       }
       if (speechWanted) {
         // Stop immediately; late results must not rewrite text the user starts editing.
-        stopForEditing('Ready to edit, copy or share.');
+        stopForEditing('Paused. Resume at the cursor with Ctrl/Cmd + Shift + Space.');
         if (editor.value.trim()) saveCurrent(false);
         return;
       }
@@ -739,6 +919,8 @@
       speechUndoOpen = false;
       speechWanted = true;
       forceBrowserService = false;
+      disableHints = false;
+      paused = false;
       updateRecordingUI();
       startRecognition();
     }
@@ -845,6 +1027,7 @@
       flushSave();
       const archive = {
         app: 'dictatus', version: 1, exportedAt: new Date().toISOString(),
+        speechSettings,
         notes: state.notes,
         draft: state.activeId ? null : state.draft
       };
@@ -857,6 +1040,11 @@
       if (!incoming || !['dictatus', 'diktat-single-file'].includes(incoming.app) ||
           incoming.version !== 1 || !Array.isArray(incoming.notes) || !incoming.notes.every(isValidNote)) {
         throw new Error('Invalid Dictatus archive.');
+      }
+      const importedSettings = incoming.speechSettings === undefined ? null : validateSpeechSettings(incoming.speechSettings);
+      if (importedSettings && confirm('Also replace your speech commands and dictionary with the settings in this archive?')) {
+        localStorage.setItem(SETTINGS_KEY, JSON.stringify(importedSettings));
+        applySpeechSettings(importedSettings);
       }
       const existing = new Set(state.notes.map((note) => note.id));
       let count = 0;
@@ -902,7 +1090,88 @@
       }
     }
 
+    const actionShortcuts = [
+      ['n', 'new-button', 'New note'],
+      ['s', 'save-button', 'Save note'],
+      ['c', 'copy-button', 'Copy text'],
+      ['h', 'share-button', 'Share text'],
+      ['e', 'markdown-export-button', 'Export Markdown'],
+      ['a', 'export-button', 'Export archive'],
+      ['i', 'import-button', 'Import'],
+      ['f', 'archive-search', 'Search archive'],
+      ['d', 'settings-toggle', 'Show/hide speech settings'],
+      ['w', 'save-speech-settings', 'Save speech settings'],
+      ['k', 'shortcuts-toggle', 'Show/hide keyboard shortcuts'],
+      ['u', 'undo-button', 'Undo editor change'],
+      ['r', 'redo-button', 'Redo editor change']
+    ];
+    const formatShortcuts = ['h1', 'h2', 'bold', 'italic', 'strike', 'code', 'list', 'number', 'quote', 'link'];
+
+    function initializeShortcuts() {
+      const list = getElement('shortcut-list');
+      const addRow = (name, shortcut) => {
+        const row = document.createElement('tr');
+        for (const text of [name, shortcut]) {
+          const cell = document.createElement('td');
+          cell.textContent = text;
+          row.append(cell);
+        }
+        list.append(row);
+      };
+      recordButton.title = 'Pause / resume at cursor (Ctrl/Cmd + Shift + Space)';
+      addRow('Pause / resume at cursor', 'Ctrl/Cmd + Shift + Space');
+      for (const [key, id, name] of actionShortcuts) {
+        const element = getElement(id);
+        element.title = `${name} (Alt + Shift + ${key.toUpperCase()})`;
+        element.setAttribute('aria-keyshortcuts', `Alt+Shift+${key.toUpperCase()}`);
+        addRow(name, `Alt + Shift + ${key.toUpperCase()}`);
+      }
+      formatShortcuts.forEach((format, index) => {
+        const number = (index + 1) % 10;
+        const button = document.querySelector(`[data-format="${format}"]`);
+        const label = button.getAttribute('aria-label');
+        button.title = `${label} (Ctrl/Cmd + Shift + ${number})`;
+        button.setAttribute('aria-keyshortcuts', `Control+Shift+${number} Meta+Shift+${number}`);
+        addRow(label, `Ctrl/Cmd + Shift + ${number}`);
+      });
+      addRow('Undo while editing', 'Ctrl/Cmd + Z');
+      addRow('Redo while editing', 'Ctrl/Cmd + Shift + Z / Ctrl + Y');
+      addRow('Open focused archive note', 'Enter');
+      addRow('Delete focused archive note', 'Delete');
+    }
+
+    function handleShortcut(event) {
+      if (event.defaultPrevented || event.repeat || event.isComposing || composing || event.getModifierState('AltGraph')) return;
+      if (event.altKey && event.shiftKey && !event.ctrlKey && !event.metaKey) {
+        const shortcut = actionShortcuts.find(([key]) => key === event.key.toLowerCase());
+        if (!shortcut) return;
+        event.preventDefault();
+        const element = getElement(shortcut[1]);
+        if (element.disabled) return;
+        if (shortcut[1] === 'archive-search') {
+          element.focus();
+          element.select();
+        } else {
+          element.click();
+          if (shortcut[1] === 'settings-toggle' && getElement('speech-settings').open) getElement('command-mode').focus();
+          if (shortcut[1] === 'undo-button' || shortcut[1] === 'redo-button') editor.focus({ preventScroll: true });
+        }
+        return;
+      }
+      if (!event.shiftKey || !(event.ctrlKey || event.metaKey) || event.altKey) return;
+      if (event.code === 'Space') {
+        event.preventDefault();
+        toggleRecording();
+      } else if (/^Digit[0-9]$/.test(event.code)) {
+        event.preventDefault();
+        const number = Number(event.code.slice(-1));
+        formatMarkdown(formatShortcuts[number === 0 ? 9 : number - 1]);
+      }
+    }
+
     recordButton.addEventListener('click', toggleRecording);
+    getElement('save-speech-settings').addEventListener('click', saveSpeechSettings);
+    document.addEventListener('keydown', handleShortcut);
     getElement('new-button').addEventListener('click', newNote);
     getElement('save-button').addEventListener('click', () => saveCurrent(true));
     getElement('copy-button').addEventListener('click', copyText);
@@ -968,6 +1237,8 @@
       if (document.visibilityState === 'hidden') persist();
     });
 
+    initializeShortcuts();
+    loadSpeechSettings();
     loadState();
     editor.value = state.draft.text;
     resetEditorHistory();
