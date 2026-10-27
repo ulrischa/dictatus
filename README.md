@@ -39,6 +39,12 @@ The main button pauses immediately and keeps the currently visible text. Resume 
 
 Editing the live hypothesis pauses recognition to protect the edit. Resume explicitly when ready; it never restarts automatically after a manual pause. Browser-ended sessions still reconnect automatically while recording remains enabled.
 
+### Android recognition
+
+Android browsers use short recognition sessions with interim results and automatic reconnection after each completed phrase. This avoids the Android continuous-recognition bridge promoting growing partial transcripts to separate final results. Only one terminal result is accepted per short session; repeated words inside a phrase or in a new session are retained. Desktop recognition remains continuous. Android detection also covers touch devices reporting a Linux desktop platform.
+
+There can be a short listening gap at reconnection. The regression tests simulate the Android bridge behavior; real microphone behavior still requires device testing. This change does not remove duplicates already stored in a note.
+
 ## Keyboard shortcuts
 
 Open **Keyboard shortcuts** in the app for the complete action list. Button tooltips and `aria-keyshortcuts` expose the same bindings.
@@ -58,19 +64,19 @@ Open **Keyboard shortcuts** in the app for the complete action list. Button tool
 | Code / bullet list / numbered list / quote / link | Ctrl/Cmd + Shift + 6 / 7 / 8 / 9 / 0 |
 | Open / delete a focused archive note | Enter / Delete (deletion asks for confirmation) |
 
-Use the top number row for Markdown shortcuts. Native keyboard navigation (Tab, Enter, Space, arrows) operates all settings and controls. App shortcuts ignore keyboard composition, repeat and AltGraph; Ctrl/Cmd+Z remains native in settings textareas. Disabled actions remain disabled when invoked by shortcut. Browser/OS shortcuts may take precedence; all actions remain available through visible controls.
+Use the top number row for Markdown shortcuts. Native keyboard navigation (Tab, Enter, Space, arrows) operates all settings and controls. App shortcuts ignore keyboard composition, repeat and AltGraph; Ctrl/Cmd+Z remains native in dictionary inputs. Disabled actions remain disabled when invoked by shortcut. Browser/OS shortcuts may take precedence; all actions remain available through visible controls.
 
 ## Speech commands and dictionary
 
-Open **Speech commands & dictionary** below the editor actions. Save settings before starting/resuming. Saving during dictation pauses it so a new session uses the updated configuration.
+Open **Words & dictation settings** below the editor actions. Save punctuation choices with **Save punctuation settings**. Words and corrections save automatically when added or removed. Saving during dictation pauses it so a new session uses the updated configuration.
 
-- **Explicit (default):** say “Satzzeichen Komma” or “punctuation comma”. The ordinary word “Punkt” remains literal. Available punctuation: Punkt / period / full stop, Komma / comma, Fragezeichen / question mark, Ausrufezeichen / exclamation mark, Doppelpunkt / colon, Semikolon / semicolon.
+- **Explicit (default):** say “punctuation comma” / “Satzzeichen Komma”. The ordinary words “period” / “Punkt” remain literal. Available punctuation: period / Punkt, comma / Komma, question mark / Fragezeichen, exclamation mark / Ausrufezeichen, colon / Doppelpunkt, semicolon / Semikolon. “Full stop” also works in English.
 - **Short:** the same punctuation names work without the prefix. This can replace ordinary words; use Explicit or Off when discussing punctuation literally.
-- In either command mode, “neue Zeile” / “new line” creates a newline; “neuer Absatz” / “new paragraph” creates a blank line. Speak a complete command together. Commands split across finalized recognition results are not combined.
+- In either command mode, “new line” / “neue Zeile” creates a newline; “new paragraph” / “neuer Absatz” creates a blank line. Speak a complete command together. Commands split across finalized recognition results are not combined.
 - **Off:** no app-level command conversion. The browser may still produce its own punctuation.
 - **Automatic punctuation:** opt-in, enabled only if the browser exposes `unspokenPunctuation`. The capability status reports when unavailable. Accuracy depends on the engine.
-- **Names & specialist words:** one per line, up to 100 entries. The app sends recognition hints using `SpeechRecognitionPhrase` with a moderate boost when supported. Hints are not training and may be sent to a remote recognition provider. A rejected hint feature retries without hints.
-- **Corrections:** one literal `heard phrase => intended text` rule per line, up to 100. Matching is case-insensitive and respects Unicode word boundaries. Longest matches win; replacements do not cascade. Example: `elf u => LfU`. Corrections affect new speech only, after command processing, never manually edited text.
+- **Help with a difficult word:** enter the correct spelling, such as `quinoa`, and choose **Add word**. Each saved word has a remove button. Up to 100 entries. The app sends recognition hints using `SpeechRecognitionPhrase` with a moderate boost when supported. Hints are not training and may be sent to a remote recognition provider. A rejected hint feature retries without hints.
+- **Fix a repeated mistake:** enter `keen wah` under **What appears incorrectly?** and `quinoa` under **What should appear instead?**, then choose **Add correction**. No special notation is needed. Up to 100 corrections. Matching is case-insensitive and respects Unicode word boundaries. Longest matches win; replacements do not cascade. Example: `keen wah => quinoa`. Corrections affect new speech only, after command processing, never manually edited text.
 
 Speech settings persist locally under `dictatus_speech_settings_v1`. JSON archive exports include them; import asks whether to replace current settings. Archives without settings remain compatible. No external scripts, dictionaries or services are added by these features.
 

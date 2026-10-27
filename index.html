@@ -31,18 +31,18 @@
     button { cursor: pointer; }
     button:disabled { cursor: not-allowed; opacity: .5; }
     :where(button, input, textarea):focus-visible { outline: 3px solid #90a4ff; outline-offset: 2px; }
-    .page { max-width: 1240px; margin: auto; padding: 28px 22px 50px; }
+    .page { max-width: 1180px; margin: auto; padding: 28px 22px 50px; }
     .page-header { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 20px; }
-    h1 { font-size: clamp(1.7rem, 4vw, 2.3rem); letter-spacing: -.04em; margin: 0; line-height: 1.2; }
-    .layout { display: grid; grid-template-columns: minmax(0, 1fr) 310px; gap: 19px; align-items: start; }
-    .panel { min-width: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 17px; padding: 21px; box-shadow: var(--shadow); }
-    .button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: 1px solid var(--line); background: #fff; color: var(--text); padding: 10px 13px; border-radius: 10px; font-size: .88rem; line-height: 1.25; font-weight: 650; }
+    h1 { font-size: clamp(1.7rem, 4vw, 2.3rem); letter-spacing: -.045em; margin: 0; line-height: 1.2; font-family: Georgia, serif; }
+    .layout { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 19px; align-items: start; }
+    .panel { min-width: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 24px; box-shadow: 0 3px 14px rgba(25,48,89,.035); }
+    .button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: 1px solid var(--line); background: #fff; color: var(--text); padding: 10px 13px; border-radius: 7px; font-size: .88rem; line-height: 1.25; font-weight: 650; }
     .button:hover:not(:disabled) { background: #f5f7fc; border-color: #b7c4df; }
     .button.primary { background: var(--primary); border-color: var(--primary); color: #fff; }
     .button.primary:hover:not(:disabled) { background: var(--primary-hover); }
     .button.recording { background: var(--red); border-color: var(--red); color: #fff; }
     .button.recording:hover:not(:disabled) { background: #942339; }
-    .button-wide { position: sticky; top: 8px; z-index: 2; width: 100%; min-height: 66px; font-size: 1.03rem; border-radius: 12px; }
+    .button-wide { position: sticky; top: 8px; z-index: 2; width: 100%; min-height: 60px; font-size: 1rem; border-radius: 8px; letter-spacing: .01em; }
     .speech-info { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; padding: 12px 1px 13px; }
     .status-title { display: flex; align-items: center; gap: 9px; font-size: .85rem; font-weight: 650; }
     .status-caption { font-size: .78rem; color: var(--muted); margin: 2px 0 0 18px; max-width: min(68vw, 670px); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
@@ -55,10 +55,10 @@
     .editor-wrap { position: relative; }
     .toolbar { display: none; gap: 4px; flex-wrap: wrap; background: #f5f7fc; border: 1px solid var(--line); border-radius: 10px; padding: 6px; margin-bottom: 8px; }
     .editor-wrap:focus-within .toolbar { display: flex; }
-    .tool { min-width: 34px; padding: 7px 8px; color: #36435c; border: 1px solid transparent; border-radius: 7px; background: transparent; font-size: .83rem; font-weight: 650; }
+    .tool { min-width: 36px; min-height: 40px; padding: 7px 8px; color: #36435c; border: 1px solid transparent; border-radius: 7px; background: transparent; font-size: .83rem; font-weight: 650; }
     .tool:hover { background: #fff; border-color: var(--line); }
     .separator { margin: 4px 2px; background: #d6dfea; width: 1px; }
-    #editor { width: 100%; display: block; min-height: 380px; max-height: 70vh; resize: vertical; background: #fff; border: 1px solid var(--line); border-radius: 12px; color: var(--text); padding: 16px; line-height: 1.7; font-size: .94rem; font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace; }
+    #editor { width: 100%; display: block; min-height: 380px; max-height: 70vh; resize: vertical; background: #fff; border: 1px solid var(--line); border-radius: 6px; color: var(--text); padding: 22px; line-height: 1.8; font-size: 17px; font-family: inherit; box-shadow: inset 3px 0 0 var(--soft); }
     .editor-footer { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin: 8px 0 16px; color: var(--muted); font-size: .78rem; }
     .save-line { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; margin: 0 0 16px; }
     #note-title { flex: 1 1 190px; min-width: 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; color: var(--text); }
@@ -71,24 +71,42 @@
     #speech-settings { margin-top: 18px; border-top: 1px solid var(--line); padding-top: 12px; }
     #speech-settings summary { cursor: pointer; font-weight: 650; font-size: .88rem; }
     #speech-settings label { display: block; margin: 12px 0 4px; font-size: .85rem; }
-    #speech-settings textarea, #speech-settings select { width: 100%; padding: 9px; border: 1px solid var(--line); border-radius: 8px; background: white; color: var(--text); font: inherit; }
-    #speech-settings textarea { min-height: 90px; resize: vertical; }
+    #speech-settings input:not([type="checkbox"]):not([type="hidden"]), #speech-settings select { width: 100%; padding: 9px; border: 1px solid var(--line); border-radius: 8px; background: white; color: var(--text); font: inherit; }
+    .settings-section { padding: 18px 0; border-bottom: 1px solid var(--line); }
+    .settings-section h3 { margin: 0 0 8px; font-size: 1rem; letter-spacing: -.02em; }
+    .settings-help { margin: 6px 0 12px; line-height: 1.6; }
+    .entry-line { display: flex; align-items: stretch; gap: 8px; }
+    .entry-line input { min-width: 0; flex: 1; }
+    .entry-line .button { flex: 0 0 auto; }
+    .correction-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+    .correction-fields > div { min-width: 0; }
+    .dictionary-list { list-style: none; padding: 0; margin: 12px 0 0; display: flex; flex-wrap: wrap; gap: 8px; }
+    .dictionary-list li { display: flex; align-items: center; gap: 10px; padding: 4px 4px 4px 12px; background: var(--soft); border-radius: 6px; max-width: 100%; font-size: .85rem; }
+    .dictionary-list li span { overflow-wrap: anywhere; min-width: 0; }
+    .dictionary-list .remove-entry { border: 0; border-radius: 4px; min-width: 40px; min-height: 40px; background: transparent; color: var(--muted); }
+    .dictionary-list .remove-entry:hover { background: #dce3fb; color: var(--text); }
+    .dictionary-list .empty-entry { background: none; padding: 0; color: var(--muted); }
+    .command-reference { font-size: .82rem; margin: 12px 0; }
+    .command-reference summary { cursor: pointer; }
+    #speech-settings .check-label { display: flex; align-items: center; gap: 8px; }
+    #speech-settings input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--primary); flex-shrink: 0; }
+    #settings-status { min-height: 1.5em; }
     .settings-help, #settings-status, #speech-capabilities { font-size: .78rem; color: var(--muted); }
     .quick-help { font-size: .76rem; color: var(--muted); margin: 7px 0 0; }
     .bottom-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
     h2 { margin: 0; font-size: 1.1rem; letter-spacing: -.02em; }
     .archive-heading { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
     .archive-count { color: var(--muted); font-size: .77rem; }
-    #archive-search { width: 100%; margin: 17px 0 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 9px; font-size: .86rem; }
+    #archive-search { width: 100%; margin: 17px 0 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 9px; font-size: 16px; }
     .archive-list { display: flex; flex-direction: column; gap: 8px; max-height: 540px; overflow: auto; }
-    .archive-item { border: 1px solid var(--line); border-radius: 10px; padding: 10px; }
+    .archive-item { border-bottom: 1px solid var(--line); border-radius: 4px; padding: 12px 8px; }
     .archive-item.active { background: #f5f7ff; border-color: #afbbf9; }
     .archive-open { display: block; width: 100%; border: none; background: transparent; text-align: left; color: inherit; padding: 0; }
     .archive-title { display: block; font-weight: 700; font-size: .87rem; overflow-wrap: anywhere; }
     .archive-excerpt { display: block; font-size: .77rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin: 4px 0; }
     .archive-meta { display: flex; align-items: center; justify-content: space-between; gap: 10px; color: var(--muted); font-size: .73rem; }
     .delete { background: transparent; border: 0; font-size: .75rem; color: #a32839; padding: 3px 5px; }
-    .empty { padding: 26px 10px; text-align: center; color: var(--muted); font-size: .86rem; }
+    .empty { padding: 22px 10px; text-align: center; color: var(--muted); font-size: .86rem; }
     .archive-actions { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 15px; border-top: 1px solid var(--line); padding-top: 13px; }
     .archive-actions .button { font-size: .79rem; padding: 9px; }
     .sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
@@ -96,6 +114,18 @@
     #toast.visible { opacity: 1; transform: translate(-50%, 0); }
     @media (max-width: 900px) { .layout { grid-template-columns: minmax(0, 1fr); } .archive-list { max-height: 330px; } }
     @media (max-width: 570px) { .page { padding: 18px 12px 38px; } .panel { padding: 13px; border-radius: 13px; } .button-wide { min-height: 60px; } #editor { min-height: 320px; } .speech-info { align-items: start; } }
+    @media (max-width: 570px) {
+      .page-header { margin-bottom: 16px; }
+      .quick-help { display: none; }
+      #editor { font-size: 16px; padding: 16px; min-height: 300px; }
+      #note-title, #archive-search, #speech-settings input, #speech-settings select { font-size: 16px; }
+      .correction-fields { grid-template-columns: 1fr; gap: 0; }
+      .entry-line { flex-wrap: wrap; }
+      .entry-line input { flex-basis: 170px; }
+      .status-caption { margin-left: 18px; max-width: 75vw; }
+      .mode-badge { border-radius: 5px; }
+    }
+    @media (any-pointer: coarse) { .quick-help { display: none; } }
     @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
   </style>
 </head>
@@ -108,7 +138,7 @@
 
     <div class="layout">
       <section class="panel" aria-label="Dictation editor">
-        <button type="button" id="record-button" aria-keyshortcuts="Control+Shift+Space Meta+Shift+Space" class="button primary button-wide" aria-pressed="false">🎙 Start dictation</button>
+        <button type="button" id="record-button" aria-keyshortcuts="Control+Shift+Space Meta+Shift+Space" class="button primary button-wide" aria-pressed="false">● Start dictation</button>
         <p class="quick-help">Ctrl/Cmd + Shift + Space: pause / resume at the cursor. Pausing keeps the visible text.</p>
         <div class="speech-info" role="status" aria-live="polite">
           <div>
@@ -137,7 +167,7 @@
             <button class="tool" type="button" data-format="link" title="Link" aria-label="Link">🔗</button>
           </div>
           <label class="sr-only" for="editor">Dictation text (Markdown supported)</label>
-          <textarea id="editor" spellcheck="true" placeholder="Your dictation appears here. Edit earlier text while continuing to speak."></textarea>
+          <textarea id="editor" spellcheck="true" placeholder="Speak or type…"></textarea>
         </div>
         <div class="editor-footer"><span id="word-count">0 words · 0 characters</span><span id="save-state" aria-live="polite">Autosave active</span></div>
 
@@ -148,29 +178,58 @@
           <span class="autosave" id="autosave-indicator">● Autosave on</span>
         </div>
         <div class="bottom-actions">
-          <button class="button primary" type="button" id="copy-button">📋 Copy</button>
+          <button class="button primary" type="button" id="copy-button">Copy text</button>
           <button class="button" type="button" id="share-button">↗ Share</button>
           <button class="button" type="button" id="markdown-export-button">↓ Export Markdown</button>
         </div>
         <details id="speech-settings">
-          <summary id="settings-toggle">Speech commands &amp; dictionary</summary>
-          <label for="command-mode">Spoken commands (German / English)</label>
-          <select id="command-mode">
-            <option value="off">Off</option>
-            <option value="explicit" selected>Explicit: “Satzzeichen Komma” / “punctuation comma”</option>
-            <option value="simple">Short: “Komma” / “comma” (may replace literal words)</option>
-          </select>
-          <p class="settings-help">Commands: Punkt / period, Komma / comma, Fragezeichen / question mark, Ausrufezeichen / exclamation mark, Doppelpunkt / colon, Semikolon / semicolon. Say “neue Zeile” / “new line” or “neuer Absatz” / “new paragraph” in either command mode. Speak each complete command together.</p>
-          <label><input type="checkbox" id="auto-punctuation"> Automatic punctuation, when supported</label>
-          <label for="custom-words">Names &amp; specialist words — one per line</label>
-          <textarea id="custom-words" rows="3" placeholder="Ökotoxikologie&#10;Fronius" spellcheck="false" aria-describedby="dictionary-help"></textarea>
-          <p id="dictionary-help" class="settings-help">Up to 100 entries. Recognition hints depend on browser support; they do not train the recognizer. Hints may be sent to the browser's recognition provider.</p>
-          <label for="custom-replacements">Corrections — heard phrase =&gt; intended text</label>
-          <textarea id="custom-replacements" rows="3" placeholder="elf u =&gt; LfU" spellcheck="false" aria-describedby="replacement-help"></textarea>
-          <p id="replacement-help" class="settings-help">Up to 100 rules. Literal whole phrases, case-insensitive. Applied only to new speech, never to your typed text. Settings are saved locally and included in archive exports.</p>
-          <button type="button" class="button" id="save-speech-settings">Save speech settings</button>
+          <summary id="settings-toggle">Words &amp; dictation settings</summary>
+          <div class="settings-section">
+            <h3>Speak punctuation</h3>
+            <label for="command-mode">How would you like to say it?</label>
+            <select id="command-mode">
+              <option value="off">No spoken commands</option>
+              <option value="explicit" selected>Explicit commands (recommended)</option>
+              <option value="simple">Short commands</option>
+            </select>
+            <p class="settings-help"><strong>Explicit:</strong> “punctuation comma” / “Satzzeichen Komma”.<br><strong>Short:</strong> “comma” / “Komma”. This also replaces those words when you mean them literally.</p>
+            <details class="command-reference"><summary>See all spoken commands</summary>
+              <p class="settings-help">period / Punkt · comma / Komma · question mark / Fragezeichen · exclamation mark / Ausrufezeichen · colon / Doppelpunkt · semicolon / Semikolon.</p>
+              <p class="settings-help">Say “new line” / “neue Zeile” or “new paragraph” / “neuer Absatz” in either mode. Speak each complete command together.</p>
+            </details>
+            <label class="check-label"><input type="checkbox" id="auto-punctuation"> Let the browser add punctuation automatically</label>
+            <p class="settings-help">Only available in browsers that support it.</p>
+          <button type="button" class="button" id="save-speech-settings">Save punctuation settings</button>
           <p id="settings-status" role="status"></p>
           <p id="speech-capabilities">Recognition capabilities are checked when dictation starts.</p>
+          </div>
+          <div class="settings-section">
+            <h3>Help with a difficult word</h3>
+            <p class="settings-help" id="dictionary-help">Add the correct spelling of a name or an unusual word. This helps supported browsers recognize it; it does not guarantee the result.</p>
+            <form id="word-form" class="entry-form">
+              <label for="word-entry">Word to recognize</label>
+              <div class="entry-line"><input id="word-entry" placeholder="For example: quinoa" maxlength="300" required autocomplete="off" aria-describedby="dictionary-help"><button class="button" type="submit" id="add-word">Add word</button></div>
+            </form>
+            <p id="word-feedback" class="settings-help" role="status"></p>
+            <ul id="word-list" class="dictionary-list" aria-label="Your words"></ul>
+            <input type="hidden" id="custom-words">
+          </div>
+          <div class="settings-section">
+            <h3>Fix a repeated mistake</h3>
+            <p class="settings-help" id="replacement-help">If a word keeps coming out wrong, tell Dictatus what to replace it with. This works in every supported browser and only changes new dictated text.</p>
+            <form id="correction-form" class="entry-form">
+              <div class="correction-fields">
+                <div><label for="heard-entry">What appears incorrectly?</label><input id="heard-entry" placeholder="For example: keen wah" maxlength="140" required autocomplete="off"></div>
+                <div><label for="replacement-entry">What should appear instead?</label><input id="replacement-entry" placeholder="For example: quinoa" maxlength="140" required autocomplete="off"></div>
+              </div>
+              <button class="button" type="submit" id="add-correction">Add correction</button>
+            </form>
+            <p id="correction-feedback" class="settings-help" role="status"></p>
+            <ul id="correction-list" class="dictionary-list" aria-label="Your corrections"></ul>
+            <input type="hidden" id="custom-replacements">
+          </div>
+          <p class="settings-help">Words and corrections save when you add or remove them. Up to 100 of each. They are included in archive exports. Recognition hints may be sent to your browser's speech provider.</p>
+
         </details>
         <details id="keyboard-shortcuts">
           <summary id="shortcuts-toggle">Keyboard shortcuts</summary>
@@ -207,6 +266,7 @@
     const titleInput = getElement('note-title');
     const recordButton = getElement('record-button');
     const modeBadge = getElement('mode-badge');
+    const androidRecognition = navigator.userAgentData?.platform === 'Android' || /Android/i.test(navigator.userAgent) || (/Linux/i.test(navigator.platform) && navigator.maxTouchPoints > 0);
     const speechLanguage = navigator.language || navigator.languages?.[0] || 'en-US';
 
     const blankState = () => ({ version: 1, activeId: null, draft: { title: '', text: '' }, notes: [] });
@@ -280,6 +340,7 @@
       getElement('custom-words').value = settings.words;
       getElement('custom-replacements').value = settings.replacements;
       getElement('auto-punctuation').checked = settings.punctuation;
+      renderDictionary();
     }
 
     function loadSpeechSettings() {
@@ -303,11 +364,82 @@
         localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
         if (speechWanted || recognition) stopForEditing('Settings saved. Resume at the cursor when ready.');
         applySpeechSettings(settings);
-        getElement('settings-status').textContent = 'Saved. Settings apply to the next dictation session.';
+        getElement('settings-status').textContent = 'Saved. Ready for your next dictation.';
+        return true;
       } catch (error) {
         getElement('settings-status').textContent = error.name === 'QuotaExceededError'
           ? 'Storage is full. Settings were not saved.' : error.message;
+        return false;
       }
+    }
+
+    function renderDictionary() {
+      for (const [field, listId, isCorrection] of [['custom-words', 'word-list', false], ['custom-replacements', 'correction-list', true]]) {
+        const list = getElement(listId);
+        list.replaceChildren();
+        const lines = getElement(field).value.split('\n').filter(line => line.trim());
+        if (!lines.length) {
+          const item = document.createElement('li');
+          item.className = 'empty-entry';
+          item.textContent = isCorrection ? 'No corrections yet.' : 'No words added yet.';
+          list.append(item);
+        }
+        lines.forEach((line, index) => {
+          const item = document.createElement('li');
+          const label = document.createElement('span');
+          label.textContent = isCorrection ? line.split('=>').map(part => part.trim()).join(' → ') : line;
+          const remove = document.createElement('button');
+          remove.type = 'button';
+          remove.className = 'remove-entry';
+          remove.textContent = '×';
+          remove.setAttribute('aria-label', `Remove ${label.textContent}`);
+          remove.title = 'Remove (Enter or Space)';
+          remove.addEventListener('click', () => {
+            const previous = getElement(field).value;
+            getElement(field).value = lines.filter((_, position) => position !== index).join('\n');
+            if (!saveSpeechSettings()) getElement(field).value = previous;
+            else getElement(isCorrection ? 'heard-entry' : 'word-entry').focus({ preventScroll: true });
+          });
+          item.append(label, remove);
+          list.append(item);
+        });
+      }
+    }
+
+    function addDictionaryEntry(event, correction) {
+      event.preventDefault();
+      const feedback = getElement(correction ? 'correction-feedback' : 'word-feedback');
+      const report = message => {
+        feedback.textContent = message;
+        getElement('settings-status').textContent = message;
+      };
+      const first = getElement(correction ? 'heard-entry' : 'word-entry');
+      const second = getElement('replacement-entry');
+      const value = first.value.trim();
+      const replacement = second.value.trim();
+      if (!value || (correction && !replacement)) {
+        report('Please enter a word in each field.');
+        first.focus();
+        return;
+      }
+      if (value.includes('=>') || (correction && replacement.includes('=>'))) {
+        report('Enter just the words; no arrow notation is needed.');
+        return;
+      }
+      const field = getElement(correction ? 'custom-replacements' : 'custom-words');
+      const previous = field.value;
+      const lines = previous.split('\n').filter(line => line.trim());
+      if (!correction && lines.some(line => line.toLowerCase() === value.toLowerCase())) {
+        report('That word is already in your list.');
+        return;
+      }
+      lines.push(correction ? `${value} => ${replacement}` : value);
+      field.value = lines.join('\n');
+      if (!saveSpeechSettings()) { field.value = previous; feedback.textContent = getElement('settings-status').textContent; return; }
+      feedback.textContent = correction ? 'Correction saved.' : 'Word saved.';
+      first.value = '';
+      if (correction) second.value = '';
+      first.focus({ preventScroll: true });
     }
 
     function transformSpeech(text) {
@@ -585,7 +717,7 @@
     }
 
     function updateRecordingUI() {
-      recordButton.textContent = speechWanted ? 'Ⅱ Pause dictation' : paused ? '▶ Resume at cursor' : '🎙 Start dictation';
+      recordButton.textContent = speechWanted ? 'Ⅱ Pause dictation' : paused ? '▶ Resume at cursor' : '● Start dictation';
       recordButton.classList.toggle('recording', speechWanted);
       recordButton.classList.toggle('primary', !speechWanted);
       recordButton.setAttribute('aria-pressed', String(speechWanted));
@@ -804,7 +936,10 @@
       const instance = new SpeechRecognitionClass();
       recognition = instance;
       instance.lang = speechLanguage;
-      instance.continuous = true;
+      // Android's continuous bridge may mark growing partials as separate finals.
+      // Single-utterance sessions preserve interim semantics; onend reconnects.
+      instance.continuous = !androidRecognition;
+      let terminalResultReceived = false;
       instance.interimResults = true;
       instance.maxAlternatives = 1;
       if ('processLocally' in instance) instance.processLocally = mode === 'offline';
@@ -818,7 +953,7 @@
         setSpeechStatus('Listening…', listeningDetail);
       };
       instance.onresult = (event) => {
-        if (recognition !== instance || !dictationRange) return;
+        if (recognition !== instance || !dictationRange || terminalResultReceived) return;
         if (composing) {
           deferredResult = () => instance.onresult(event);
           return;
@@ -836,6 +971,7 @@
             }
           } else if (transcript) interim.push(transcript);
         }
+        if (!instance.continuous && Array.from(event.results).some(result => result.isFinal)) terminalResultReceived = true;
         if (finals.length) replaceSpeech(transformSpeech(finals.join(' ')), true);
         replaceSpeech(transformSpeech(interim.join(' ')));
       };
@@ -909,7 +1045,7 @@
       }
       if (speechWanted) {
         // Stop immediately; late results must not rewrite text the user starts editing.
-        stopForEditing('Paused. Resume at the cursor with Ctrl/Cmd + Shift + Space.');
+        stopForEditing('Paused. Place the cursor and resume when ready.');
         if (editor.value.trim()) saveCurrent(false);
         return;
       }
@@ -1136,6 +1272,8 @@
       });
       addRow('Undo while editing', 'Ctrl/Cmd + Z');
       addRow('Redo while editing', 'Ctrl/Cmd + Shift + Z / Ctrl + Y');
+      addRow('Add word / correction in its form', 'Enter');
+      addRow('Remove focused word / correction', 'Enter / Space');
       addRow('Open focused archive note', 'Enter');
       addRow('Delete focused archive note', 'Delete');
     }
@@ -1169,6 +1307,8 @@
       }
     }
 
+    getElement('word-form').addEventListener('submit', event => addDictionaryEntry(event, false));
+    getElement('correction-form').addEventListener('submit', event => addDictionaryEntry(event, true));
     recordButton.addEventListener('click', toggleRecording);
     getElement('save-speech-settings').addEventListener('click', saveSpeechSettings);
     document.addEventListener('keydown', handleShortcut);

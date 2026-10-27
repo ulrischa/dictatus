@@ -7,8 +7,8 @@ const { chromium } = require(require.resolve('playwright', { paths: [process.env
 let browser;
 before(async () => { browser = await chromium.launch({ headless: true, executablePath: process.env.CHROMIUM_PATH }); });
 after(async () => { await browser?.close(); });
-async function setup(t, text = 'Hello world!', position = 6) {
-  const context = await browser.newContext({ serviceWorkers: 'block', locale: 'en-US' });
+async function setup(t, text = 'Hello world!', position = 6, device = {}) {
+  const context = await browser.newContext({ serviceWorkers: 'block', locale: 'en-US', ...device });
   t.after(() => context.close());
   const page = await context.newPage();
   const errors = [];
@@ -251,8 +251,8 @@ async function settings(page, { commands = 'explicit', words = '', replacements 
   if (await page.locator('#record-button').getAttribute('aria-pressed') === 'true') await page.locator('#record-button').click();
   await page.locator('#speech-settings').evaluate(e => e.open = true);
   await page.locator('#command-mode').selectOption(commands);
-  await page.locator('#custom-words').fill(words);
-  await page.locator('#custom-replacements').fill(replacements);
+  await page.locator('#custom-words').evaluate((e, value) => e.value = value, words);
+  await page.locator('#custom-replacements').evaluate((e, value) => e.value = value, replacements);
   await page.locator('#auto-punctuation').setChecked(punctuation);
   await page.locator('#save-speech-settings').click();
   await page.locator('#editor').focus();
@@ -277,18 +277,18 @@ test('simple commands and newlines remain formatted across speech events', async
 
 test('dictionary replacements are literal, case insensitive, whole phrase and non-cascading', async t => {
   const page = await setup(t, '', 0);
-  await settings(page, { commands: 'off', replacements: 'foo => bar\nbar => Baz\nelf u => LfU' });
-  await emit(page, [['FOO bar food elf u', true]]);
-  assert.equal(await value(page), 'bar Baz food LfU');
+  await settings(page, { commands: 'off', replacements: 'foo => bar\nbar => Baz\nkeen wah => quinoa' });
+  await emit(page, [['FOO bar food keen wah', true]]);
+  assert.equal(await value(page), 'bar Baz food quinoa');
 });
 
 test('speech settings persist across reloads and leave manually typed text unchanged', async t => {
   const page = await setup(t, '', 0);
-  await settings(page, { replacements: 'foo => Fachwort', words: 'Ökotoxikologie\nLfU' });
+  await settings(page, { replacements: 'foo => Fachwort', words: 'Acoustics\nquinoa' });
   await page.locator('#record-button').click();
   await page.reload();
   await page.locator('#speech-settings').evaluate(e => e.open = true);
-  assert.equal(await page.locator('#custom-words').inputValue(), 'Ökotoxikologie\nLfU');
+  assert.equal(await page.locator('#custom-words').inputValue(), 'Acoustics\nquinoa');
   await page.locator('#editor').fill('foo');
   assert.equal(await value(page), 'foo');
 });
@@ -310,7 +310,7 @@ test('invalid replacement settings are rejected without losing previous settings
   const page = await setup(t, '', 0);
   await settings(page, { replacements: 'foo => Bar' });
   await page.locator('#record-button').click();
-  await page.locator('#custom-replacements').fill('invalid line');
+  await page.locator('#custom-replacements').evaluate(e => e.value = 'invalid line');
   await page.locator('#save-speech-settings').click();
   assert.match(await page.locator('#settings-status').textContent(), /line 1/i);
   await page.reload();
@@ -324,18 +324,18 @@ test('supported recognition receives word hints and automatic punctuation', asyn
     SpeechRecognition.prototype.unspokenPunctuation = false;
     window.SpeechRecognitionPhrase = class { constructor(phrase, boost) { this.phrase = phrase; this.boost = boost; } };
   });
-  await settings(page, { words: 'LfU', replacements: 'elf u => LfU', punctuation: true });
-  assert.deepEqual(await page.evaluate(() => sessions.at(-1).phrases.map(p => [p.phrase, p.boost])), [['LfU', 3]]);
+  await settings(page, { words: 'quinoa', replacements: 'keen wah => quinoa', punctuation: true });
+  assert.deepEqual(await page.evaluate(() => sessions.at(-1).phrases.map(p => [p.phrase, p.boost])), [['quinoa', 3]]);
   assert.equal(await page.evaluate(() => sessions.at(-1).unspokenPunctuation), true);
 });
 
 test('unsupported optional features report fallback while corrections still work', async t => {
   const page = await setup(t, '', 0);
-  await settings(page, { words: 'LfU', replacements: 'elf u => LfU', punctuation: true });
+  await settings(page, { words: 'quinoa', replacements: 'keen wah => quinoa', punctuation: true });
   assert.match(await page.locator('#speech-capabilities').textContent(), /Word hints unavailable/);
   assert.match(await page.locator('#speech-capabilities').textContent(), /Automatic punctuation unavailable/);
-  await emit(page, [['elf u', true]]);
-  assert.equal(await value(page), 'LfU');
+  await emit(page, [['keen wah', true]]);
+  assert.equal(await value(page), 'quinoa');
 });
 
 test('rejected hints restart once without hints and reject stale results', async t => {
@@ -344,30 +344,30 @@ test('rejected hints restart once without hints and reject stale results', async
     SpeechRecognition.prototype.phrases = [];
     window.SpeechRecognitionPhrase = class { constructor(phrase) { this.phrase = phrase; } };
   });
-  await settings(page, { words: 'LfU', replacements: 'elf u => LfU' });
+  await settings(page, { words: 'quinoa', replacements: 'keen wah => quinoa' });
   const count = await page.evaluate(() => sessions.length);
   await page.evaluate(() => sessions.at(-1).onerror({ error: 'phrases-not-supported' }));
   await page.waitForFunction(count => sessions.length > count && sessions.at(-1).onresult, count);
   assert.deepEqual(await page.evaluate(() => sessions.at(-1).phrases), []);
-  await emit(page, [['elf u', true]]);
-  assert.equal(await value(page), 'LfU');
+  await emit(page, [['keen wah', true]]);
+  assert.equal(await value(page), 'quinoa');
 });
 
 test('archive export and import round-trip settings with explicit replacement consent', async t => {
   const page = await setup(t, '', 0);
-  await settings(page, { words: 'LfU', replacements: 'elf u => LfU' });
+  await settings(page, { words: 'quinoa', replacements: 'keen wah => quinoa' });
   await page.locator('#record-button').click();
   const pending = page.waitForEvent('download');
   await page.locator('#export-button').click();
   const download = await pending;
   const archive = JSON.parse(fs.readFileSync(await download.path(), 'utf8'));
-  assert.equal(archive.speechSettings.words, 'LfU');
-  archive.speechSettings.words = 'Fronius';
+  assert.equal(archive.speechSettings.words, 'quinoa');
+  archive.speechSettings.words = 'Orion';
   page.once('dialog', dialog => dialog.accept());
   await page.locator('#file-import').setInputFiles({ name: 'archive.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(archive)) });
-  await page.waitForFunction(() => document.getElementById('custom-words').value === 'Fronius');
+  await page.waitForFunction(() => document.getElementById('custom-words').value === 'Orion');
   await page.reload();
-  assert.equal(await page.locator('#custom-words').inputValue(), 'Fronius');
+  assert.equal(await page.locator('#custom-words').inputValue(), 'Orion');
 });
 
 test('replacement metacharacters and replacement dollar signs stay literal', async t => {
@@ -468,4 +468,91 @@ test('shortcuts ignore composition and key repeat and retain native typing', asy
   await page.keyboard.press('Control+Shift+Space');
   await page.locator('#editor').fill('Ordinary typing');
   assert.equal(await value(page), 'Ordinary typing');
+});
+
+test('Android growing hypotheses replace each other instead of accumulating', async t => {
+  const page = await setup(t, '', 0, { userAgent: 'Mozilla/5.0 (Linux; Android 14) Chrome/130.0 Mobile Safari/537.36' });
+  await page.evaluate(() => {
+    const session = sessions.at(-1);
+    const accumulated = [];
+    for (const transcript of ['so jetzt', 'so jetzt probieren', 'so jetzt probieren wir es']) {
+      // Android's continuous bridge can promote partials to separate finals.
+      if (session.continuous) {
+        accumulated.push([transcript, true]);
+        session.emit(accumulated);
+      } else session.emit([[transcript, false]]);
+    }
+    session.emit(session.continuous ? [...accumulated, ['so jetzt probieren wir es', true]] : [['so jetzt probieren wir es', true]]);
+  });
+  assert.equal(await value(page), 'so jetzt probieren wir es');
+});
+
+test('Android sessions preserve intentional repetitions and ignore extra terminal callbacks', async t => {
+  const page = await setup(t, '', 0, { userAgent: 'Mozilla/5.0 (Linux; Android 14) Chrome/130.0 Mobile Safari/537.36' });
+  await emit(page, [['ja ja', true]]);
+  await emit(page, [['ja ja', true], ['ja ja', true]]);
+  assert.equal(await value(page), 'ja ja');
+  await page.evaluate(() => sessions.at(-1).onend());
+  await page.waitForFunction(() => sessions.filter(s => s.onresult).length === 2);
+  await emit(page, [['ja ja', true]]);
+  assert.equal(await value(page), 'ja ja ja ja');
+});
+
+test('dictionary forms add, persist and remove entries without special notation', async t => {
+  const page = await setup(t, '', 0);
+  await page.locator('#record-button').click();
+  await page.locator('#speech-settings').evaluate(e => e.open = true);
+  await page.locator('#word-entry').fill('quinoa');
+  await page.locator('#word-entry').press('Enter');
+  assert.equal(await page.locator('#word-list .remove-entry').count(), 1);
+  await page.locator('#heard-entry').fill('keen wah');
+  await page.locator('#replacement-entry').fill('quinoa');
+  await page.locator('#add-correction').click();
+  assert.match(await page.locator('#correction-list').textContent(), /keen wah → quinoa/);
+  await page.reload();
+  await page.locator('#speech-settings').evaluate(e => e.open = true);
+  assert.equal(await page.locator('#word-list .remove-entry').count(), 1);
+  await page.locator('#word-list .remove-entry').click();
+  await page.locator('#correction-list .remove-entry').focus();
+  await page.keyboard.press('Enter');
+  await page.reload();
+  assert.equal(await page.locator('#word-list .remove-entry').count(), 0);
+  assert.equal(await page.locator('#correction-list .remove-entry').count(), 0);
+});
+
+test('dictionary form rejects duplicate words and retains invalid entries for correction', async t => {
+  const page = await setup(t, '', 0);
+  await page.locator('#record-button').click();
+  await page.locator('#speech-settings').evaluate(e => e.open = true);
+  await page.locator('#word-entry').fill('quinoa');
+  await page.locator('#add-word').click();
+  await page.locator('#word-entry').fill('QUINOA');
+  await page.locator('#add-word').click();
+  assert.match(await page.locator('#settings-status').textContent(), /already/);
+  assert.equal(await page.locator('#word-list .remove-entry').count(), 1);
+  await page.locator('#heard-entry').fill('wrong => notation');
+  await page.locator('#replacement-entry').fill('quinoa');
+  await page.locator('#add-correction').click();
+  assert.match(await page.locator('#settings-status').textContent(), /no arrow/);
+  assert.equal(await page.locator('#heard-entry').inputValue(), 'wrong => notation');
+});
+
+test('expanded settings remain usable across phone, tablet and desktop widths', async t => {
+  const page = await setup(t, '', 0);
+  await page.locator('#record-button').click();
+  await page.locator('#speech-settings').evaluate(e => e.open = true);
+  for (const width of [320, 390, 768, 1024, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, `Overflow at ${width}`);
+    const font = await page.locator('#word-entry').evaluate(e => parseFloat(getComputedStyle(e).fontSize));
+    assert.ok(font >= 16);
+    if (process.env.SCREENSHOT_PATH && [390, 1440].includes(width)) {
+      await page.screenshot({ path: process.env.SCREENSHOT_PATH.replace('.png', `-${width}.png`), fullPage: true });
+    }
+  }
+});
+
+test('touch devices with Linux desktop identification also use short sessions', async t => {
+  const page = await setup(t, '', 0, { userAgent: 'Mozilla/5.0 (X11; Linux x86_64) Chrome/130.0 Safari/537.36', hasTouch: true });
+  assert.equal(await page.evaluate(() => sessions.at(-1).continuous), false);
 });
