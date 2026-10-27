@@ -556,3 +556,116 @@ test('touch devices with Linux desktop identification also use short sessions', 
   const page = await setup(t, '', 0, { userAgent: 'Mozilla/5.0 (X11; Linux x86_64) Chrome/130.0 Safari/537.36', hasTouch: true });
   assert.equal(await page.evaluate(() => sessions.at(-1).continuous), false);
 });
+
+
+test('Android tap redirects dictation and rejects old-session callbacks', async t => {
+  const page = await setup(t, 'Hello world', 11, { userAgent: 'Mozilla/5.0 (Linux; Android 14) Chrome/130.0 Mobile Safari/537.36', hasTouch: true });
+  await emit(page, [['first', false]]);
+  await page.locator('#editor').evaluate(e => {
+    window.oldSession = sessions.at(-1);
+    e.focus();
+    e.setSelectionRange(6, 6);
+    e.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  });
+  await page.evaluate(() => { oldSession.emit([['late result', true]]); oldSession.onend(); });
+  await page.waitForFunction(() => sessions.filter(s => s.onresult).length === 2);
+  await emit(page, [['new', true]]);
+  assert.equal(await value(page), 'Hello new world first');
+  await page.evaluate(() => sessions.at(-1).onend());
+  await page.waitForFunction(() => sessions.filter(s => s.onresult).length === 3);
+  await emit(page, [['again', true]]);
+  assert.equal(await value(page), 'Hello new again world first');
+});
+
+test('keyboard caret navigation redirects speech without reacting to programmatic updates', async t => {
+  const page = await setup(t, 'Hello world', 11);
+  await emit(page, [['first', true]]);
+  await page.locator('#editor').focus();
+  await page.keyboard.press('Home');
+  await page.waitForFunction(() => sessions.filter(s => s.onresult).length === 2);
+  await emit(page, [['New', true]]);
+  assert.equal(await value(page), 'New Hello world first');
+  await emit(page, [['New', true], ['start', true]]);
+  assert.equal(await value(page), 'New start Hello world first');
+  assert.equal(await page.evaluate(() => sessions.filter(s => s.onresult).length), 2);
+});
+
+test('punctuation commands wait for final confirmation and survive subsequent interim withdrawal', async t => {
+  const page = await setup(t, '', 0);
+  await emit(page, [['Hello punctuation comma', false]]);
+  assert.equal(await value(page), 'Hello punctuation comma');
+  await emit(page, [['Hello', false]]);
+  assert.equal(await value(page), 'Hello');
+  await emit(page, [['Hello punctuation comma', true], ['world', false]]);
+  assert.equal(await value(page), 'Hello, world');
+  await emit(page, [['Hello punctuation comma', true]]);
+  assert.equal(await value(page), 'Hello,');
+  await emit(page, [['Hello punctuation comma', true], ['again punctuation period', true]]);
+  assert.equal(await value(page), 'Hello, again.');
+});
+
+
+test('a touchscreen tap places the next phrase at the actual browser caret', async t => {
+  const page = await setup(t, 'Hello world', 11, { userAgent: 'Mozilla/5.0 (Linux; Android 14) Chrome/130.0 Mobile Safari/537.36', hasTouch: true, isMobile: true, viewport: { width: 390, height: 844 } });
+  await page.locator('#editor').scrollIntoViewIfNeeded();
+  const box = await page.locator('#editor').boundingBox();
+  await page.touchscreen.tap(box.x + 18, box.y + 27);
+  const anchor = await page.locator('#editor').evaluate(e => e.selectionEnd);
+  assert.ok(anchor < 11);
+  await page.waitForFunction(() => sessions.filter(s => s.onresult).length === 2);
+  await emit(page, [['New', true]]);
+  const before = 'Hello world'.slice(0, anchor);
+  const after = 'Hello world'.slice(anchor);
+  assert.equal(await value(page), before + (before && !/\s$/.test(before) ? ' ' : '') + 'New' + (after && !/^\s/.test(after) ? ' ' : '') + after);
+});
+
+test('rapid caret changes during reconnect use the latest position and pause cancels restart', async t => {
+  const page = await setup(t, 'Hello world', 11);
+  await page.evaluate(() => sessions.at(-1).onend());
+  await page.locator('#editor').evaluate(e => {
+    e.focus();
+    for (const position of [0, 3, 6]) {
+      e.setSelectionRange(position, position);
+      e.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    }
+  });
+  await page.waitForFunction(() => sessions.filter(s => s.onresult).length === 2);
+  await emit(page, [['new', true]]);
+  assert.equal(await value(page), 'Hello new world');
+  await page.locator('#editor').evaluate(e => {
+    e.setSelectionRange(0, 0);
+    e.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    document.getElementById('record-button').click();
+  });
+  await page.waitForTimeout(400);
+  assert.equal(await page.evaluate(() => sessions.filter(s => s.onresult).length), 2);
+  assert.equal(await page.locator('#record-button').getAttribute('aria-pressed'), 'false');
+});
+
+test('selecting text with a pointer does not relocate the live phrase', async t => {
+  const page = await setup(t, 'Hello world', 11);
+  await page.locator('#editor').evaluate(e => {
+    e.focus(); e.setSelectionRange(0, 5);
+    e.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  });
+  await emit(page, [['new', true]]);
+  assert.equal(await value(page), 'Hello world new');
+  assert.deepEqual(await page.locator('#editor').evaluate(e => [e.selectionStart, e.selectionEnd]), [0, 5]);
+});
+
+
+test('dragging a selection does not redirect at its transient collapsed start', async t => {
+  const page = await setup(t, 'Hello world', 11);
+  await page.locator('#editor').evaluate(e => {
+    e.focus();
+    e.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+    e.setSelectionRange(0, 0);
+  });
+  await page.locator('#editor').evaluate(e => {
+    e.setSelectionRange(0, 5);
+    e.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+  });
+  await emit(page, [['new', true]]);
+  assert.equal(await value(page), 'Hello world new');
+  assert.deepEqual(await page.locator('#editor').evaluate(e => [e.selectionStart, e.selectionEnd]), [0, 5]);
+});

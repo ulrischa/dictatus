@@ -1,6 +1,6 @@
 'use strict';
 
-const CACHE_NAME = 'dictatus-shell-v6';
+const CACHE_NAME = 'dictatus-shell-v7';
 const APP_SHELL = [
   './',
   './index.html',
