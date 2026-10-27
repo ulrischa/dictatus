@@ -7,7 +7,7 @@ A lightweight, installable, offline-first dictation and Markdown editor. Plain H
 - Start/stop browser-based dictation in the browser's language (`navigator.language`).
 - **On-device first:** check for local speech recognition and try to install the required language pack. If it is unavailable or installation fails, fall back to the browser's default speech-recognition service.
 - Show **Offline recognition** for a confirmed on-device session; show **Browser service · may be online** if the browser controls recognition. The latter may send audio to a remote provider; the app cannot reliably determine where the browser processes it.
-- Edit previously recognized text **while dictation continues**. Final results append without replacing text or disturbing an earlier selection. Interim hypotheses are displayed separately.
+- Edit previously recognized text **while dictation continues**. Final results insert at the current textarea cursor position, advancing the caret for the next phrase. Move the cursor to dictate into an earlier paragraph. Existing selections are preserved (dictation inserts after the selection). Interim hypotheses appear immediately near the recording status and below the editor; they may change before finalization.
 - Markdown toolbar appears when the editor receives focus.
 - Autosaved draft and local archive using `localStorage` (only text, not audio recordings).
 - Copy text, use Web Share when supported, export a Markdown file, import TXT/Markdown, and import/export a JSON archive.
@@ -23,6 +23,8 @@ Copy the repository contents into a folder named `dictatus` on any HTTPS web ser
 ## Speech recognition and privacy
 
 The Web Speech API and microphone permission must be enabled in the browser. Dictatus does not use Windows Voice Typing or the Outlook dictation feature, but corporate/browser policies may still disable speech recognition or microphone access.
+
+Recognition latency depends on the browser engine, speech segmentation (often a pause before final text), the microphone, and possibly a remote service. Dictatus enables interim results and displays them as soon as the browser provides them; JavaScript cannot force the browser to finalize words sooner.
 
 Local recognition depends on experimental browser support and the availability of language packs; `SpeechRecognition.available()` and `SpeechRecognition.install()` may be unavailable or blocked. On-device packs may need an initial download. If local recognition fails, Dictatus uses the browser's speech-recognition service where supported. **Browser service does not guarantee offline operation or local audio processing.** The fallback is explicit in the UI.
 
