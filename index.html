@@ -1,0 +1,786 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f7f8fc">
+  <meta name="color-scheme" content="light">
+  <meta name="description" content="Dictatus – dictation, Markdown editing and a private browser archive.">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" type="image/png" href="./icons/icon-192.png">
+  <link rel="apple-touch-icon" href="./icons/icon-192.png">
+  <title>Dictatus</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font: 16px/1.5 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --background: #f5f7fb;
+      --surface: #fff;
+      --text: #192439;
+      --muted: #64728a;
+      --line: #dce3ed;
+      --primary: #304dc8;
+      --primary-hover: #243bb0;
+      --soft: #eef2ff;
+      --red: #b42e43;
+      --shadow: 0 12px 36px rgba(25,48,89,.055);
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--background); color: var(--text); }
+    button, input, textarea { font: inherit; }
+    button { cursor: pointer; }
+    button:disabled { cursor: not-allowed; opacity: .5; }
+    :where(button, input, textarea):focus-visible { outline: 3px solid #90a4ff; outline-offset: 2px; }
+    .page { max-width: 1240px; margin: auto; padding: 28px 22px 50px; }
+    .page-header { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 20px; }
+    h1 { font-size: clamp(1.7rem, 4vw, 2.3rem); letter-spacing: -.04em; margin: 0; line-height: 1.2; }
+    .layout { display: grid; grid-template-columns: minmax(0, 1fr) 310px; gap: 19px; align-items: start; }
+    .panel { min-width: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 17px; padding: 21px; box-shadow: var(--shadow); }
+    .button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: 1px solid var(--line); background: #fff; color: var(--text); padding: 10px 13px; border-radius: 10px; font-size: .88rem; line-height: 1.25; font-weight: 650; }
+    .button:hover:not(:disabled) { background: #f5f7fc; border-color: #b7c4df; }
+    .button.primary { background: var(--primary); border-color: var(--primary); color: #fff; }
+    .button.primary:hover:not(:disabled) { background: var(--primary-hover); }
+    .button.recording { background: var(--red); border-color: var(--red); color: #fff; }
+    .button.recording:hover:not(:disabled) { background: #942339; }
+    .button-wide { width: 100%; min-height: 66px; font-size: 1.03rem; border-radius: 12px; }
+    .speech-info { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; padding: 12px 1px 13px; }
+    .status-title { display: flex; align-items: center; gap: 9px; font-size: .85rem; font-weight: 650; }
+    .status-caption { font-size: .78rem; color: var(--muted); margin: 2px 0 0 18px; }
+    .dot { width: 9px; height: 9px; flex: 0 0 9px; border-radius: 50%; background: #a2aec1; }
+    .dot.live { background: #d42e48; box-shadow: 0 0 0 5px rgba(212,46,72,.11); animation: pulse 1.3s infinite; }
+    @keyframes pulse { 50% { box-shadow: 0 0 0 9px rgba(212,46,72,0); } }
+    .mode-badge { padding: 6px 10px; border: 1px solid var(--line); border-radius: 999px; font-size: .74rem; font-weight: 650; color: #4f607d; background: #f9fafc; }
+    .mode-badge.offline { color: #086946; background: #e8f8f1; border-color: #ade6cc; }
+    .mode-badge.browser { color: #7b5620; background: #fff8e8; border-color: #e6d9ac; }
+    .editor-wrap { position: relative; }
+    .toolbar { display: none; gap: 4px; flex-wrap: wrap; background: #f5f7fc; border: 1px solid var(--line); border-radius: 10px; padding: 6px; margin-bottom: 8px; }
+    .editor-wrap:focus-within .toolbar { display: flex; }
+    .tool { min-width: 34px; padding: 7px 8px; color: #36435c; border: 1px solid transparent; border-radius: 7px; background: transparent; font-size: .83rem; font-weight: 650; }
+    .tool:hover { background: #fff; border-color: var(--line); }
+    .separator { margin: 4px 2px; background: #d6dfea; width: 1px; }
+    #editor { width: 100%; display: block; min-height: 380px; max-height: 70vh; resize: vertical; background: #fff; border: 1px solid var(--line); border-radius: 12px; color: var(--text); padding: 16px; line-height: 1.7; font-size: .94rem; font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace; }
+    .interim { margin-top: 8px; border-left: 3px solid #7e91db; padding: 5px 10px; color: #4e6093; background: #f4f6ff; border-radius: 0 8px 8px 0; font-size: .84rem; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .interim[hidden] { display: none; }
+    .editor-footer { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin: 8px 0 16px; color: var(--muted); font-size: .78rem; }
+    .save-line { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; margin: 0 0 16px; }
+    #note-title { flex: 1 1 190px; min-width: 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; color: var(--text); }
+    .autosave { color: #137353; font-size: .76rem; font-weight: 650; white-space: nowrap; }
+    .autosave.error { color: var(--red); }
+    .bottom-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+    h2 { margin: 0; font-size: 1.1rem; letter-spacing: -.02em; }
+    .archive-heading { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+    .archive-count { color: var(--muted); font-size: .77rem; }
+    #archive-search { width: 100%; margin: 17px 0 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 9px; font-size: .86rem; }
+    .archive-list { display: flex; flex-direction: column; gap: 8px; max-height: 540px; overflow: auto; }
+    .archive-item { border: 1px solid var(--line); border-radius: 10px; padding: 10px; }
+    .archive-item.active { background: #f5f7ff; border-color: #afbbf9; }
+    .archive-open { display: block; width: 100%; border: none; background: transparent; text-align: left; color: inherit; padding: 0; }
+    .archive-title { display: block; font-weight: 700; font-size: .87rem; overflow-wrap: anywhere; }
+    .archive-excerpt { display: block; font-size: .77rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin: 4px 0; }
+    .archive-meta { display: flex; align-items: center; justify-content: space-between; gap: 10px; color: var(--muted); font-size: .73rem; }
+    .delete { background: transparent; border: 0; font-size: .75rem; color: #a32839; padding: 3px 5px; }
+    .empty { padding: 26px 10px; text-align: center; color: var(--muted); font-size: .86rem; }
+    .archive-actions { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 15px; border-top: 1px solid var(--line); padding-top: 13px; }
+    .archive-actions .button { font-size: .79rem; padding: 9px; }
+    .sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+    #toast { position: fixed; left: 50%; bottom: 22px; transform: translate(-50%, 14px); pointer-events: none; opacity: 0; background: #192439; color: #fff; padding: 12px 16px; border-radius: 10px; box-shadow: 0 12px 35px rgba(15,25,50,.23); text-align: center; font-size: .88rem; max-width: calc(100vw - 28px); transition: opacity .18s, transform .18s; z-index: 5; }
+    #toast.visible { opacity: 1; transform: translate(-50%, 0); }
+    @media (max-width: 900px) { .layout { grid-template-columns: minmax(0, 1fr); } .archive-list { max-height: 330px; } }
+    @media (max-width: 570px) { .page { padding: 18px 12px 38px; } .panel { padding: 13px; border-radius: 13px; } .button-wide { min-height: 60px; } #editor { min-height: 320px; } .speech-info { align-items: start; } }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header class="page-header">
+      <h1>👩‍🏫 Dictatus</h1>
+      <button type="button" class="button" id="new-button">＋ New</button>
+    </header>
+
+    <div class="layout">
+      <section class="panel" aria-label="Dictation editor">
+        <button type="button" id="record-button" class="button primary button-wide" aria-pressed="false">🎙 Start dictation</button>
+        <div class="speech-info" role="status" aria-live="polite">
+          <div>
+            <div class="status-title"><span class="dot" id="status-dot"></span><span id="status-title">Ready to dictate</span></div>
+            <p class="status-caption" id="status-help">Uses your browser language.</p>
+          </div>
+          <span id="mode-badge" class="mode-badge">Not started</span>
+        </div>
+
+        <div class="editor-wrap">
+          <div class="toolbar" role="toolbar" aria-label="Markdown formatting">
+            <button class="tool" type="button" data-format="h1" title="Heading 1" aria-label="Heading 1">H1</button>
+            <button class="tool" type="button" data-format="h2" title="Heading 2" aria-label="Heading 2">H2</button>
+            <span class="separator" aria-hidden="true"></span>
+            <button class="tool" type="button" data-format="bold" title="Bold" aria-label="Bold"><strong>B</strong></button>
+            <button class="tool" type="button" data-format="italic" title="Italic" aria-label="Italic"><em>I</em></button>
+            <button class="tool" type="button" data-format="strike" title="Strikethrough" aria-label="Strikethrough"><s>S</s></button>
+            <button class="tool" type="button" data-format="code" title="Inline code" aria-label="Inline code">&lt;/&gt;</button>
+            <span class="separator" aria-hidden="true"></span>
+            <button class="tool" type="button" data-format="list" title="Bulleted list" aria-label="Bulleted list">• List</button>
+            <button class="tool" type="button" data-format="number" title="Numbered list" aria-label="Numbered list">1. List</button>
+            <button class="tool" type="button" data-format="quote" title="Quote" aria-label="Quote">❝</button>
+            <button class="tool" type="button" data-format="link" title="Link" aria-label="Link">🔗</button>
+          </div>
+          <label class="sr-only" for="editor">Dictation text (Markdown supported)</label>
+          <textarea id="editor" spellcheck="true" placeholder="Your dictation appears here. Edit earlier text while continuing to speak."></textarea>
+        </div>
+        <div id="interim" class="interim" hidden aria-label="Words awaiting recognition"></div>
+        <div class="editor-footer"><span id="word-count">0 words · 0 characters</span><span id="save-state" aria-live="polite">Autosave active</span></div>
+
+        <div class="save-line">
+          <label class="sr-only" for="note-title">Optional title</label>
+          <input id="note-title" type="text" maxlength="160" placeholder="Title (optional)" autocomplete="off">
+          <button class="button primary" type="button" id="save-button">Save</button>
+          <span class="autosave" id="autosave-indicator">● Autosave on</span>
+        </div>
+        <div class="bottom-actions">
+          <button class="button primary" type="button" id="copy-button">📋 Copy</button>
+          <button class="button" type="button" id="share-button">↗ Share</button>
+          <button class="button" type="button" id="markdown-export-button">↓ Export Markdown</button>
+        </div>
+      </section>
+
+      <aside class="panel" aria-labelledby="archive-heading">
+        <div class="archive-heading"><h2 id="archive-heading">Archive</h2><span class="archive-count" id="archive-count">0 notes</span></div>
+        <label for="archive-search" class="sr-only">Search archive</label>
+        <input id="archive-search" type="search" placeholder="Search archive…" autocomplete="off">
+        <div class="archive-list" id="archive-list"></div>
+        <div class="archive-actions">
+          <button class="button" type="button" id="export-button">↓ Export archive</button>
+          <button class="button" type="button" id="import-button">↑ Import</button>
+          <input class="sr-only" id="file-import" type="file" accept=".json,.txt,.md,.markdown,application/json,text/plain,text/markdown">
+        </div>
+      </aside>
+    </div>
+  </main>
+  <div id="toast" role="status" aria-live="polite"></div>
+
+  <script>
+    'use strict';
+
+    const STORAGE_KEY = 'dictatus_v1';
+    const LEGACY_STORAGE_KEY = 'diktat_single_file_v1';
+    const SpeechRecognitionClass = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const getElement = (id) => document.getElementById(id);
+    const editor = getElement('editor');
+    const titleInput = getElement('note-title');
+    const recordButton = getElement('record-button');
+    const modeBadge = getElement('mode-badge');
+    const speechLanguage = navigator.language || navigator.languages?.[0] || 'en-US';
+
+    const blankState = () => ({ version: 1, activeId: null, draft: { title: '', text: '' }, notes: [] });
+    let state = blankState();
+    let storageAvailable = true;
+    let saveTimer = null;
+    let toastTimer = null;
+    let restartTimer = null;
+    let recognition = null;
+    let speechWanted = false;
+    let speechActive = false;
+    let speechError = '';
+    let speechMode = 'none';
+    let forceBrowserService = false;
+    let recognitionToken = 0;
+    let processedFinals = new Set();
+
+    function newId() {
+      return typeof window.crypto?.randomUUID === 'function' ? window.crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    }
+
+    function isValidNote(note) {
+      return note && typeof note === 'object' &&
+        typeof note.id === 'string' && typeof note.title === 'string' &&
+        typeof note.text === 'string' && typeof note.createdAt === 'string' &&
+        typeof note.updatedAt === 'string';
+    }
+
+    function loadState() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY) || localStorage.getItem(LEGACY_STORAGE_KEY);
+        if (!raw) return;
+        const saved = JSON.parse(raw);
+        if (saved.version !== 1 || !Array.isArray(saved.notes)) return;
+        state.notes = saved.notes.filter(isValidNote);
+        state.draft = {
+          title: typeof saved.draft?.title === 'string' ? saved.draft.title : '',
+          text: typeof saved.draft?.text === 'string' ? saved.draft.text : ''
+        };
+        state.activeId = state.notes.some((note) => note.id === saved.activeId) ? saved.activeId : null;
+      } catch (error) {
+        storageAvailable = false;
+        console.warn('Could not read local storage:', error);
+      }
+    }
+
+    function persist() {
+      state.draft = { title: titleInput.value, text: editor.value };
+      if (state.activeId) {
+        const activeNote = state.notes.find((note) => note.id === state.activeId);
+        if (activeNote) {
+          activeNote.title = state.draft.title;
+          activeNote.text = state.draft.text;
+          activeNote.updatedAt = new Date().toISOString();
+        }
+      }
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+        storageAvailable = true;
+        getElement('save-state').textContent = 'Saved locally';
+        getElement('autosave-indicator').textContent = '● Autosave on';
+        getElement('autosave-indicator').classList.remove('error');
+      } catch (error) {
+        storageAvailable = false;
+        getElement('save-state').textContent = 'Save failed';
+        getElement('autosave-indicator').textContent = '⚠ Storage unavailable';
+        getElement('autosave-indicator').classList.add('error');
+        console.warn('Could not write local storage:', error);
+      }
+    }
+
+    function scheduleSave() {
+      getElement('save-state').textContent = 'Saving…';
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(() => { persist(); renderArchive(); }, 200);
+      updateCount();
+    }
+
+    function flushSave() {
+      clearTimeout(saveTimer);
+      persist();
+      renderArchive();
+    }
+
+    function toast(message) {
+      const element = getElement('toast');
+      element.textContent = message;
+      element.classList.add('visible');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => element.classList.remove('visible'), 3500);
+    }
+
+    function deriveTitle(note) {
+      const explicit = (note.title || '').trim();
+      if (explicit) return explicit;
+      const line = (note.text || '').split(/\r?\n/).find((entry) => entry.trim()) || '';
+      return line.replace(/^\s*(?:#{1,6}\s+|>\s*|[-*]\s+|\d+\.\s+)/, '').trim().slice(0, 65) || 'Untitled note';
+    }
+
+    function saveCurrent(notify = true) {
+      if (!editor.value.trim() && !titleInput.value.trim()) {
+        if (notify) toast('Nothing to save yet.');
+        return false;
+      }
+      if (!state.activeId) {
+        const now = new Date().toISOString();
+        const note = { id: newId(), title: titleInput.value, text: editor.value, createdAt: now, updatedAt: now };
+        state.notes.unshift(note);
+        state.activeId = note.id;
+      }
+      flushSave();
+      if (notify) toast(storageAvailable ? 'Saved to archive.' : 'Could not save. Please export your text.');
+      return true;
+    }
+
+    function updateCount() {
+      const trimmed = editor.value.trim();
+      const words = trimmed ? trimmed.split(/\s+/u).length : 0;
+      getElement('word-count').textContent = `${words} ${words === 1 ? 'word' : 'words'} · ${editor.value.length} characters`;
+    }
+
+    function formatDate(value) {
+      const date = new Date(value);
+      return Number.isNaN(date.getTime()) ? 'Unknown date' : new Intl.DateTimeFormat(navigator.language || 'en', { dateStyle: 'short', timeStyle: 'short' }).format(date);
+    }
+
+    function renderArchive() {
+      const list = getElement('archive-list');
+      const filter = getElement('archive-search').value.trim().toLocaleLowerCase();
+      const matches = [...state.notes].sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt))
+        .filter((note) => `${note.title}\n${note.text}`.toLocaleLowerCase().includes(filter));
+      getElement('archive-count').textContent = `${state.notes.length} ${state.notes.length === 1 ? 'note' : 'notes'}`;
+      list.replaceChildren();
+      if (matches.length === 0) {
+        const empty = document.createElement('p');
+        empty.className = 'empty';
+        empty.textContent = filter ? 'No matching notes.' : 'Your archive is empty.';
+        list.append(empty);
+        return;
+      }
+      for (const note of matches) {
+        const row = document.createElement('article');
+        row.className = `archive-item${note.id === state.activeId ? ' active' : ''}`;
+        const openButton = document.createElement('button');
+        openButton.type = 'button';
+        openButton.className = 'archive-open';
+        openButton.title = 'Open this note';
+        const title = document.createElement('span');
+        title.className = 'archive-title';
+        title.textContent = deriveTitle(note);
+        const excerpt = document.createElement('span');
+        excerpt.className = 'archive-excerpt';
+        excerpt.textContent = note.text.replace(/\s+/g, ' ').slice(0, 130) || '(empty)';
+        openButton.append(title, excerpt);
+        openButton.addEventListener('click', () => openNote(note.id));
+        const meta = document.createElement('div');
+        meta.className = 'archive-meta';
+        const date = document.createElement('span');
+        date.textContent = formatDate(note.updatedAt);
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.className = 'delete';
+        remove.textContent = 'Delete';
+        remove.title = 'Permanently delete this note';
+        remove.addEventListener('click', () => deleteNote(note.id));
+        meta.append(date, remove);
+        row.append(openButton, meta);
+        list.append(row);
+      }
+    }
+
+    function canSwitchNotes() {
+      if (speechWanted || speechActive || recognition) {
+        toast('Stop dictation before switching notes.');
+        return false;
+      }
+      return true;
+    }
+
+    function openNote(id) {
+      if (!canSwitchNotes()) return;
+      flushSave();
+      if ((editor.value.trim() || titleInput.value.trim()) && !state.activeId) saveCurrent(false);
+      const note = state.notes.find((item) => item.id === id);
+      if (!note) return;
+      state.activeId = id;
+      editor.value = note.text;
+      titleInput.value = note.title;
+      flushSave();
+      updateCount();
+      editor.focus();
+    }
+
+    function newNote() {
+      if (!canSwitchNotes()) return;
+      if (editor.value.trim() || titleInput.value.trim()) saveCurrent(false);
+      state.activeId = null;
+      editor.value = '';
+      titleInput.value = '';
+      flushSave();
+      updateCount();
+      editor.focus();
+      toast('New note ready. Previous text archived.');
+    }
+
+    function deleteNote(id) {
+      if (!canSwitchNotes()) return;
+      const note = state.notes.find((item) => item.id === id);
+      if (!note || !confirm(`Permanently delete “${deriveTitle(note)}”?`)) return;
+      state.notes = state.notes.filter((item) => item.id !== id);
+      if (state.activeId === id) {
+        state.activeId = null;
+        editor.value = '';
+        titleInput.value = '';
+        updateCount();
+      }
+      flushSave();
+      toast('Note deleted.');
+    }
+
+    function setSpeechStatus(title, detail) {
+      getElement('status-title').textContent = title;
+      getElement('status-help').textContent = detail;
+    }
+
+    function setMode(mode) {
+      speechMode = mode;
+      modeBadge.className = `mode-badge${mode === 'offline' ? ' offline' : mode === 'browser' ? ' browser' : ''}`;
+      modeBadge.textContent = mode === 'offline' ? 'Offline recognition' :
+        mode === 'browser' ? 'Browser service · may be online' :
+        mode === 'checking' ? 'Checking recognition…' : 'Not started';
+    }
+
+    function updateRecordingUI() {
+      recordButton.textContent = speechWanted ? '■ Stop dictation' : '🎙 Start dictation';
+      recordButton.classList.toggle('recording', speechWanted);
+      recordButton.classList.toggle('primary', !speechWanted);
+      recordButton.setAttribute('aria-pressed', String(speechWanted));
+      getElement('status-dot').classList.toggle('live', speechActive);
+      getElement('new-button').disabled = speechWanted || speechActive || !!recognition;
+      getElement('import-button').disabled = speechWanted || speechActive || !!recognition;
+      if (!SpeechRecognitionClass) recordButton.disabled = true;
+    }
+
+    function addRecognizedText(spoken) {
+      const text = spoken.trim();
+      if (!text) return;
+      const oldLength = editor.value.length;
+      const caretAtEnd = document.activeElement === editor &&
+        editor.selectionStart === oldLength && editor.selectionEnd === oldLength;
+      const startsWithPunctuation = /^[.,!?;:)}\]]/.test(text);
+      const separator = oldLength === 0 || /\s$/.test(editor.value) || startsWithPunctuation ? '' : ' ';
+
+      // Insert at the end without resetting the textarea or its editing selection.
+      editor.setRangeText(separator + text, oldLength, oldLength, 'preserve');
+      if (caretAtEnd) editor.setSelectionRange(editor.value.length, editor.value.length);
+      if (document.activeElement !== editor) editor.scrollTop = editor.scrollHeight;
+      editor.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+
+    function showInterim(text) {
+      const element = getElement('interim');
+      element.textContent = text ? `Recognizing: ${text}` : '';
+      element.hidden = !text;
+    }
+
+    async function selectRecognitionMode() {
+      if (forceBrowserService) return 'browser';
+      if (typeof SpeechRecognitionClass?.available !== 'function' ||
+          typeof SpeechRecognitionClass?.install !== 'function') return 'browser';
+      const probe = new SpeechRecognitionClass();
+      if (!('processLocally' in probe)) return 'browser';
+      const options = { langs: [speechLanguage], processLocally: true };
+      try {
+        let availability = await SpeechRecognitionClass.available(options);
+        if (availability === 'available') return 'offline';
+        if (availability === 'downloadable' || availability === 'downloading') {
+          setSpeechStatus('Preparing offline recognition…', `Checking ${speechLanguage} language pack.`);
+          const installed = await SpeechRecognitionClass.install(options);
+          if (installed) {
+            availability = await SpeechRecognitionClass.available(options);
+            if (availability === 'available') return 'offline';
+          }
+        }
+      } catch (error) {
+        // A missing API permission, unsupported browser, or installation failure falls back safely.
+        console.warn('On-device recognition unavailable:', error);
+      }
+      return 'browser';
+    }
+
+    async function startRecognition() {
+      if (!speechWanted || !SpeechRecognitionClass || recognition) return;
+      const token = ++recognitionToken;
+      setMode('checking');
+      setSpeechStatus('Preparing recognition…', `Language: ${speechLanguage}`);
+      const mode = await selectRecognitionMode();
+      if (!speechWanted || token !== recognitionToken) return;
+      setMode(mode);
+      processedFinals = new Set();
+      showInterim('');
+      speechError = '';
+      const instance = new SpeechRecognitionClass();
+      recognition = instance;
+      instance.lang = speechLanguage;
+      instance.continuous = true;
+      instance.interimResults = true;
+      instance.maxAlternatives = 1;
+      if ('processLocally' in instance) instance.processLocally = mode === 'offline';
+
+      instance.onstart = () => {
+        if (recognition !== instance) return;
+        speechActive = true;
+        updateRecordingUI();
+        setSpeechStatus('Listening…', mode === 'offline' ? `On-device · ${speechLanguage}` : `Browser recognition · ${speechLanguage}`);
+      };
+      instance.onresult = (event) => {
+        if (recognition !== instance) return;
+        const interim = [];
+        for (let i = 0; i < event.results.length; i += 1) {
+          const result = event.results[i];
+          const transcript = result[0]?.transcript?.trim() || '';
+          if (result.isFinal) {
+            if (!processedFinals.has(i)) {
+              processedFinals.add(i);
+              addRecognizedText(transcript);
+            }
+          } else if (transcript) {
+            interim.push(transcript);
+          }
+        }
+        showInterim(interim.join(' '));
+      };
+      instance.onerror = (event) => {
+        if (recognition !== instance) return;
+        speechError = event.error || 'unknown';
+        if (mode === 'offline' && ['language-not-supported', 'service-not-allowed', 'network'].includes(speechError)) {
+          forceBrowserService = true;
+          setSpeechStatus('Offline language unavailable', 'Switching to browser recognition…');
+          return;
+        }
+        const messages = {
+          'not-allowed': 'Microphone or speech recognition permission denied.',
+          'service-not-allowed': 'Speech recognition was blocked by the browser or an administrator.',
+          'audio-capture': 'No microphone is available.',
+          'network': 'The browser recognition service is unavailable.',
+          'language-not-supported': `Language ${speechLanguage} is unsupported.`,
+          'no-speech': 'No speech detected. Reconnecting…',
+          'aborted': 'Recognition stopped.'
+        };
+        setSpeechStatus('Recognition interrupted', messages[speechError] || `Recognition error: ${speechError}`);
+        if (speechError !== 'no-speech' && speechError !== 'aborted') {
+          speechWanted = false;
+          setMode('none');
+        }
+        updateRecordingUI();
+      };
+      instance.onend = () => {
+        if (recognition !== instance) return;
+        recognition = null;
+        speechActive = false;
+        showInterim('');
+        if (editor.value.trim()) saveCurrent(false);
+        updateRecordingUI();
+        if (speechWanted) {
+          setSpeechStatus('Reconnecting…', 'The browser ended this recognition session.');
+          restartTimer = setTimeout(startRecognition, 700);
+        } else if (!speechError || speechError === 'aborted') {
+          setSpeechStatus('Dictation stopped', 'Ready to edit, copy or share.');
+        }
+      };
+      try {
+        instance.start();
+      } catch (error) {
+        recognition = null;
+        speechActive = false;
+        if (mode === 'offline' && error.name === 'NotSupportedError') {
+          forceBrowserService = true;
+          restartTimer = setTimeout(startRecognition, 250);
+          return;
+        }
+        speechWanted = false;
+        updateRecordingUI();
+        setSpeechStatus('Could not start dictation', 'Check your browser and microphone permissions.');
+        console.warn('Recognition could not start:', error);
+      }
+    }
+
+    function toggleRecording() {
+      if (!SpeechRecognitionClass) {
+        toast('Speech recognition is not supported in this browser.');
+        return;
+      }
+      if (speechWanted) {
+        speechWanted = false;
+        ++recognitionToken;
+        clearTimeout(restartTimer);
+        setSpeechStatus('Stopping dictation…', 'Saving final recognized words.');
+        if (recognition) {
+          try { recognition.stop(); } catch (error) { console.warn('Could not stop recognition:', error); }
+        } else {
+          speechActive = false;
+          showInterim('');
+          setSpeechStatus('Dictation stopped', 'Ready to edit, copy or share.');
+          if (editor.value.trim()) saveCurrent(false);
+        }
+        updateRecordingUI();
+        return;
+      }
+      if (recognition) return;
+      speechWanted = true;
+      forceBrowserService = false;
+      updateRecordingUI();
+      startRecognition();
+    }
+
+    function wrapMarkdown(before, after, placeholder) {
+      const start = editor.selectionStart;
+      const end = editor.selectionEnd;
+      const text = editor.value.slice(start, end) || placeholder;
+      editor.setRangeText(before + text + after, start, end, 'select');
+      editor.focus();
+      editor.setSelectionRange(start + before.length, start + before.length + text.length);
+      editor.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+
+    function formatLines(type) {
+      const cursorStart = editor.selectionStart;
+      const cursorEnd = editor.selectionEnd;
+      const original = editor.value;
+      const start = original.lastIndexOf('\n', Math.max(0, cursorStart - 1)) + 1;
+      const effectiveEnd = cursorEnd > cursorStart && original[cursorEnd - 1] === '\n' ? cursorEnd - 1 : cursorEnd;
+      const nextLine = original.indexOf('\n', effectiveEnd);
+      const end = nextLine < 0 ? original.length : nextLine;
+      const prefixes = { h1: '# ', h2: '## ', quote: '> ', list: '- ' };
+      let number = 0;
+      const replacement = original.slice(start, end).split('\n').map((line) =>
+        (type === 'number' ? `${++number}. ` : prefixes[type]) + line).join('\n');
+      editor.setRangeText(replacement, start, end, 'select');
+      editor.focus();
+      editor.setSelectionRange(start, start + replacement.length);
+      editor.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+
+    function formatMarkdown(type) {
+      switch (type) {
+        case 'bold': wrapMarkdown('**', '**', 'bold text'); break;
+        case 'italic': wrapMarkdown('*', '*', 'italic text'); break;
+        case 'strike': wrapMarkdown('~~', '~~', 'strikethrough text'); break;
+        case 'code': wrapMarkdown('`', '`', 'code'); break;
+        case 'link': wrapMarkdown('[', '](https://)', 'link text'); break;
+        default: formatLines(type);
+      }
+    }
+
+    async function copyText() {
+      if (!editor.value) { toast('Nothing to copy.'); return false; }
+      try {
+        if (navigator.clipboard?.writeText) {
+          await navigator.clipboard.writeText(editor.value);
+          toast('Copied to clipboard.');
+          return true;
+        }
+      } catch (error) { console.warn('Clipboard access failed:', error); }
+      const helper = document.createElement('textarea');
+      helper.value = editor.value;
+      helper.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0';
+      document.body.append(helper);
+      helper.select();
+      let success = false;
+      try { success = document.execCommand('copy'); } catch (error) { console.warn('Copy fallback failed:', error); }
+      helper.remove();
+      toast(success ? 'Copied to clipboard.' : 'Copy was blocked. Select the text and use Ctrl+C.');
+      return success;
+    }
+
+    async function shareText() {
+      if (!editor.value.trim()) { toast('Nothing to share.'); return; }
+      if (typeof navigator.share === 'function') {
+        try {
+          await navigator.share({ title: titleInput.value || 'Dictatus', text: editor.value });
+          return;
+        } catch (error) {
+          if (error.name === 'AbortError') return;
+          console.warn('Share failed:', error);
+        }
+      }
+      await copyText();
+    }
+
+    function downloadFile(name, contents, mimeType) {
+      const url = URL.createObjectURL(new Blob([contents], { type: mimeType }));
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = name;
+      document.body.append(anchor);
+      anchor.click();
+      anchor.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+    }
+
+    function safeFilename(value) {
+      return (value || 'Dictatus').replace(/[\\/:*?"<>|\x00-\x1f]/g, '-').trim().slice(0, 70) || 'Dictatus';
+    }
+
+    function exportMarkdown() {
+      if (!editor.value.trim()) { toast('Nothing to export.'); return; }
+      downloadFile(`${safeFilename(deriveTitle({ title: titleInput.value, text: editor.value }))}.md`, editor.value, 'text/markdown;charset=utf-8');
+      toast('Markdown exported.');
+    }
+
+    function exportArchive() {
+      flushSave();
+      const archive = {
+        app: 'dictatus', version: 1, exportedAt: new Date().toISOString(),
+        notes: state.notes,
+        draft: state.activeId ? null : state.draft
+      };
+      downloadFile(`dictatus-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify(archive, null, 2), 'application/json;charset=utf-8');
+      toast('Archive exported.');
+    }
+
+    function importArchive(raw) {
+      const incoming = JSON.parse(raw);
+      if (!incoming || !['dictatus', 'diktat-single-file'].includes(incoming.app) ||
+          incoming.version !== 1 || !Array.isArray(incoming.notes) || !incoming.notes.every(isValidNote)) {
+        throw new Error('Invalid Dictatus archive.');
+      }
+      const existing = new Set(state.notes.map((note) => note.id));
+      let count = 0;
+      for (const note of incoming.notes) {
+        if (existing.has(note.id)) continue;
+        state.notes.push({ ...note });
+        existing.add(note.id);
+        count += 1;
+      }
+      if (incoming.draft && typeof incoming.draft.text === 'string' && incoming.draft.text.trim()) {
+        const now = new Date().toISOString();
+        state.notes.unshift({ id: newId(), title: typeof incoming.draft.title === 'string' ? incoming.draft.title : '', text: incoming.draft.text, createdAt: now, updatedAt: now });
+        count += 1;
+      }
+      flushSave();
+      toast(`${count} ${count === 1 ? 'note' : 'notes'} imported.`);
+    }
+
+    function importText(file, contents) {
+      if (editor.value.trim() || titleInput.value.trim()) saveCurrent(false);
+      state.activeId = null;
+      editor.value = contents;
+      titleInput.value = file.name.replace(/\.(?:txt|md|markdown)$/i, '').slice(0, 160);
+      saveCurrent(false);
+      updateCount();
+      editor.focus();
+      toast('Text imported and archived.');
+    }
+
+    async function importFile(file) {
+      if (!file || !canSwitchNotes()) return;
+      if (file.size > 10 * 1024 * 1024) { toast('Maximum import size: 10 MB.'); return; }
+      try {
+        const contents = await file.text();
+        if (/\.json$/i.test(file.name)) importArchive(contents);
+        else if (/\.(?:txt|md|markdown)$/i.test(file.name)) importText(file, contents);
+        else throw new Error('Supported formats: JSON, TXT and Markdown.');
+      } catch (error) {
+        console.warn('Import failed:', error);
+        toast(`Import failed: ${error.message}`);
+      }
+    }
+
+    recordButton.addEventListener('click', toggleRecording);
+    getElement('new-button').addEventListener('click', newNote);
+    getElement('save-button').addEventListener('click', () => saveCurrent(true));
+    getElement('copy-button').addEventListener('click', copyText);
+    getElement('share-button').addEventListener('click', shareText);
+    getElement('markdown-export-button').addEventListener('click', exportMarkdown);
+    getElement('export-button').addEventListener('click', exportArchive);
+    getElement('import-button').addEventListener('click', () => getElement('file-import').click());
+    getElement('file-import').addEventListener('change', async (event) => {
+      await importFile(event.target.files?.[0]);
+      event.target.value = '';
+    });
+    getElement('archive-search').addEventListener('input', renderArchive);
+    editor.addEventListener('input', scheduleSave);
+    titleInput.addEventListener('input', scheduleSave);
+    document.querySelectorAll('[data-format]').forEach((button) => {
+      // Preserve the textarea selection when using the toolbar with a mouse.
+      button.addEventListener('pointerdown', (event) => event.preventDefault());
+      button.addEventListener('click', () => formatMarkdown(button.dataset.format));
+    });
+    window.addEventListener('pagehide', () => {
+      persist();
+      speechWanted = false;
+      ++recognitionToken;
+      if (recognition) { try { recognition.abort(); } catch {} }
+    });
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') persist();
+    });
+
+    loadState();
+    editor.value = state.draft.text;
+    titleInput.value = state.draft.title;
+    updateCount();
+    renderArchive();
+    updateRecordingUI();
+    if (!SpeechRecognitionClass) {
+      setSpeechStatus('Speech recognition unavailable', 'You can still edit, import and export text.');
+    }
+    if (!storageAvailable) toast('Browser storage is unavailable. Export your notes regularly.');
+    if ('serviceWorker' in navigator && window.isSecureContext) {
+      navigator.serviceWorker.register('./service-worker.js').catch((error) => console.warn('Offline caching unavailable:', error));
+    }
+  </script>
+</body>
+</html>
