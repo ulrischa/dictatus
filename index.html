@@ -45,7 +45,7 @@
     .button-wide { width: 100%; min-height: 66px; font-size: 1.03rem; border-radius: 12px; }
     .speech-info { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; padding: 12px 1px 13px; }
     .status-title { display: flex; align-items: center; gap: 9px; font-size: .85rem; font-weight: 650; }
-    .status-caption { font-size: .78rem; color: var(--muted); margin: 2px 0 0 18px; }
+    .status-caption { font-size: .78rem; color: var(--muted); margin: 2px 0 0 18px; max-width: min(68vw, 670px); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
     .dot { width: 9px; height: 9px; flex: 0 0 9px; border-radius: 50%; background: #a2aec1; }
     .dot.live { background: #d42e48; box-shadow: 0 0 0 5px rgba(212,46,72,.11); animation: pulse 1.3s infinite; }
     @keyframes pulse { 50% { box-shadow: 0 0 0 9px rgba(212,46,72,0); } }
@@ -184,6 +184,7 @@
     let forceBrowserService = false;
     let recognitionToken = 0;
     let processedFinals = new Set();
+    let listeningDetail = '';
 
     function newId() {
       return typeof window.crypto?.randomUUID === 'function' ? window.crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -415,23 +416,30 @@
     function addRecognizedText(spoken) {
       const text = spoken.trim();
       if (!text) return;
-      const oldLength = editor.value.length;
-      const caretAtEnd = document.activeElement === editor &&
-        editor.selectionStart === oldLength && editor.selectionEnd === oldLength;
-      const startsWithPunctuation = /^[.,!?;:)}\]]/.test(text);
-      const separator = oldLength === 0 || /\s$/.test(editor.value) || startsWithPunctuation ? '' : ' ';
 
-      // Insert at the end without resetting the textarea or its editing selection.
-      editor.setRangeText(separator + text, oldLength, oldLength, 'preserve');
-      if (caretAtEnd) editor.setSelectionRange(editor.value.length, editor.value.length);
-      if (document.activeElement !== editor) editor.scrollTop = editor.scrollHeight;
+      // Insert at the current caret without overwriting edits or a selection.
+      // An active selection is preserved; dictation inserts after it.
+      const position = editor.selectionEnd;
+      const previous = editor.value.charAt(position - 1);
+      const next = editor.value.charAt(position);
+      const startsWithPunctuation = /^[.,!?;:)}\\]]/u.test(text);
+      const prefix = position === 0 || /[\\s([{“‘"']/u.test(previous) || startsWithPunctuation ? '' : ' ';
+      const suffix = next && !/[\\s.,!?;:)}\\]]/u.test(next) ? ' ' : '';
+
+      // Advance the caret so the next phrase follows unless the user moves it.
+      editor.setRangeText(prefix + text + suffix, position, position, 'end');
       editor.dispatchEvent(new Event('input', { bubbles: true }));
     }
 
     function showInterim(text) {
       const element = getElement('interim');
-      element.textContent = text ? `Recognizing: ${text}` : '';
+      element.textContent = text ? `Live preview (may change): ${text}` : '';
       element.hidden = !text;
+      // Show words promptly by the recording status without modifying the editor.
+      if (speechActive && !speechError) {
+        getElement('status-help').textContent = text
+          ? `Live preview · ${text.slice(-180)}` : listeningDetail;
+      }
     }
 
     async function selectRecognitionMode() {
@@ -482,7 +490,8 @@
         if (recognition !== instance) return;
         speechActive = true;
         updateRecordingUI();
-        setSpeechStatus('Listening…', mode === 'offline' ? `On-device · ${speechLanguage}` : `Browser recognition · ${speechLanguage}`);
+        listeningDetail = mode === 'offline' ? `On-device · ${speechLanguage}` : `Browser recognition · ${speechLanguage}`;
+        setSpeechStatus('Listening…', listeningDetail);
       };
       instance.onresult = (event) => {
         if (recognition !== instance) return;
