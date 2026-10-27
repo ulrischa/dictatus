@@ -139,7 +139,7 @@
     <div class="layout">
       <section class="panel" aria-label="Dictation editor">
         <button type="button" id="record-button" aria-keyshortcuts="Control+Shift+Space Meta+Shift+Space" class="button primary button-wide" aria-pressed="false">● Start dictation</button>
-        <p class="quick-help">Ctrl/Cmd + Shift + Space: pause / resume at the cursor. Pausing keeps the visible text.</p>
+        <p class="quick-help">Ctrl/Cmd + Shift + Space: pause / resume. While on, dictation continues at your cursor after typing or editing.</p>
         <div class="speech-info" role="status" aria-live="polite">
           <div>
             <div class="status-title"><span class="dot" id="status-dot"></span><span id="status-title">Ready to dictate</span></div>
@@ -717,7 +717,7 @@
     }
 
     function updateRecordingUI() {
-      recordButton.textContent = speechWanted ? 'Ⅱ Pause dictation' : paused ? '▶ Resume at cursor' : '● Start dictation';
+      recordButton.textContent = speechWanted ? 'Ⅱ Pause dictation' : paused ? '▶ Resume dictation' : '● Start dictation';
       recordButton.classList.toggle('recording', speechWanted);
       recordButton.classList.toggle('primary', !speechWanted);
       recordButton.setAttribute('aria-pressed', String(speechWanted));
@@ -727,7 +727,7 @@
       if (!SpeechRecognitionClass) recordButton.disabled = true;
     }
 
-    // The live range belongs to dictation, never to the user's editing caret.
+    // Speech revisions own a live range; manual edits start a new range at the caret.
     function editorSnapshot() {
       return { text: editor.value, start: editor.selectionStart, end: editor.selectionEnd,
         direction: editor.selectionDirection, top: editor.scrollTop, left: editor.scrollLeft };
@@ -770,14 +770,13 @@
       speechUndoOpen = false;
       if (previous) { try { previous.abort(); } catch {} }
       updateRecordingUI();
-      setSpeechStatus('Dictation stopped', message);
+      setSpeechStatus('Paused', message);
     }
 
     function restoreHistory(redo = false) {
       if (composing) return;
       const source = redo ? redoStack : undoStack;
       if (!source.length) return;
-      if (dictationRange || speechWanted || recognition) stopForEditing('Undo/redo applied. Start again to continue dictating.');
       const current = editorSnapshot();
       const target = source.pop();
       pushHistory(redo ? undoStack : redoStack, current);
@@ -787,6 +786,8 @@
       editor.scrollLeft = target.left;
       editorText = editor.value;
       beforeEdit = null;
+      speechUndoOpen = false;
+      continueAfterEdit();
       updateHistoryUI();
       scheduleSave();
     }
@@ -804,29 +805,6 @@
       const next = editor.value;
       if (previous === next) { beforeEdit = null; return; }
       const snapshot = beforeEdit || { ...editorSnapshot(), text: previous };
-      let start = 0;
-      // Bound the prefix by the caret to disambiguate repeated characters.
-      const limit = beforeEdit ? Math.min(snapshot.start, editor.selectionStart) : Math.min(previous.length, next.length);
-      while (start < limit && previous[start] === next[start]) start += 1;
-      let oldEnd = previous.length;
-      let newEnd = next.length;
-      while (oldEnd > start && newEnd > start && previous[oldEnd - 1] === next[newEnd - 1]) {
-        oldEnd -= 1;
-        newEnd -= 1;
-      }
-      if (dictationRange) {
-        const { start: liveStart, end: liveEnd } = dictationRange;
-        const insertion = start === oldEnd;
-        const overlaps = insertion ? start >= liveStart && start <= liveEnd
-          : (start < liveEnd && oldEnd > liveStart) || (liveStart === liveEnd && start <= liveStart && oldEnd >= liveStart);
-        if (overlaps || !beforeEdit) {
-          stopForEditing();
-        } else if (oldEnd <= liveStart) {
-          const delta = newEnd - oldEnd;
-          dictationRange.start += delta;
-          dictationRange.end += delta;
-        }
-      }
       if (!composing || !speechUndoOpen) {
         pushHistory(undoStack, snapshot);
         redoStack.length = 0;
@@ -834,6 +812,7 @@
       speechUndoOpen = composing;
       editorText = next;
       beforeEdit = null;
+      continueAfterEdit();
       updateHistoryUI();
       scheduleSave();
     }
@@ -901,7 +880,13 @@
     function redirectDictationToCaret() {
       if (!speechWanted || !dictationRange || composing || editor.value !== editorText ||
           editor.selectionStart !== editor.selectionEnd || editor.selectionEnd === dictationRange.end) return;
-      // A deliberate caret move starts a fresh session. Keep visible words, but
+      speechUndoOpen = false;
+      continueAfterEdit();
+    }
+
+    function continueAfterEdit() {
+      if (!speechWanted) return;
+      // Each edit or deliberate caret move starts a fresh session. Keep visible words, but
       // invalidate the old handlers before aborting so late results cannot overwrite them.
       const anchor = editor.selectionEnd;
       const previous = recognition;
@@ -910,12 +895,12 @@
       clearTimeout(restartTimer);
       deferredResult = deferredEnd = null;
       dictationRange = { start: anchor, end: anchor };
-      speechUndoOpen = false;
       speechActive = false;
       if (previous) { try { previous.abort(); } catch {} }
       updateRecordingUI();
-      setSpeechStatus('Moving dictation…', 'Continuing at the cursor.');
-      restartTimer = setTimeout(startRecognition, 250);
+      setSpeechStatus(composing ? 'Editing…' : 'Reconnecting…', 'Dictation stays on and continues at the cursor after your edit.');
+      // Debounce keystrokes and wait for IME commit; never interrupt composition.
+      if (!composing) restartTimer = setTimeout(startRecognition, 250);
     }
 
     async function selectRecognitionMode() {
@@ -944,7 +929,7 @@
     }
 
     async function startRecognition() {
-      if (!speechWanted || !SpeechRecognitionClass || recognition) return;
+      if (!speechWanted || composing || !SpeechRecognitionClass || recognition) return;
       const token = ++recognitionToken;
       setMode('checking');
       setSpeechStatus('Preparing recognition…', `Language: ${speechLanguage}`);
@@ -1276,8 +1261,8 @@
         }
         list.append(row);
       };
-      recordButton.title = 'Pause / resume at cursor (Ctrl/Cmd + Shift + Space)';
-      addRow('Pause / resume at cursor', 'Ctrl/Cmd + Shift + Space');
+      recordButton.title = 'Pause / resume dictation (Ctrl/Cmd + Shift + Space)';
+      addRow('Pause / resume dictation', 'Ctrl/Cmd + Shift + Space');
       for (const [key, id, name] of actionShortcuts) {
         const element = getElement(id);
         element.title = `${name} (Alt + Shift + ${key.toUpperCase()})`;
@@ -1348,6 +1333,7 @@
     getElement('archive-search').addEventListener('input', renderArchive);
     editor.addEventListener('beforeinput', (event) => {
       beforeEdit = editorSnapshot();
+      continueAfterEdit();
       if ((event.inputType === 'historyUndo' || event.inputType === 'historyRedo') && event.cancelable) {
         event.preventDefault();
         restoreHistory(event.inputType === 'historyRedo');
@@ -1380,6 +1366,7 @@
     });
     editor.addEventListener('compositionstart', () => {
       composing = true;
+      continueAfterEdit();
       speechUndoOpen = false;
       updateHistoryUI();
     });
@@ -1393,6 +1380,7 @@
         deferredResult = deferredEnd = null;
         result?.();
         end?.();
+        continueAfterEdit();
         updateHistoryUI();
       }, 0);
     });

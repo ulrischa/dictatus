@@ -49,18 +49,21 @@ test('interim and final text appear only in the editor at the starting caret', a
   assert.equal(await page.locator('#interim').count(), 0);
 });
 
-test('editing before the live range preserves the edit, selection and dictation location', async t => {
+test('editing earlier text keeps visible words and continues at the editing caret', async t => {
   const page = await setup(t);
   await emit(page, [['wonder', false]]);
   await page.locator('#editor').focus();
   await page.locator('#editor').evaluate(e => e.setSelectionRange(0, 5));
   await page.keyboard.insertText('Good morning');
-  await emit(page, [['wonderful', true]]);
-  assert.equal(await value(page), 'Good morning wonderful world!');
-  assert.deepEqual(await page.locator('#editor').evaluate(e => [e.selectionStart, e.selectionEnd]), [12, 12]);
+  await emit(page, [['late words', true]]);
+  assert.equal(await value(page), 'Good morning wonder world!');
+  assert.equal(await page.locator('#record-button').getAttribute('aria-pressed'), 'true');
+  await page.waitForFunction(() => sessions.filter(s => s.onresult).length === 2);
+  await emit(page, [['everyone', true]]);
+  assert.equal(await value(page), 'Good morning everyone wonder world!');
 });
 
-test('editing provisional text stops recognition and ignores late results', async t => {
+test('editing provisional text keeps dictation enabled and ignores late results', async t => {
   const page = await setup(t);
   await emit(page, [['wonder', false]]);
   await page.locator('#editor').focus();
@@ -68,7 +71,7 @@ test('editing provisional text stops recognition and ignores late results', asyn
   await page.keyboard.insertText('lovely');
   await emit(page, [['wonderful', true]]);
   assert.equal(await value(page), 'Hello lovely world!');
-  assert.equal(await page.locator('#record-button').getAttribute('aria-pressed'), 'false');
+  assert.equal(await page.locator('#record-button').getAttribute('aria-pressed'), 'true');
 });
 
 test('speech settings request continuous interim results', async t => {
@@ -76,34 +79,38 @@ test('speech settings request continuous interim results', async t => {
   assert.deepEqual(await page.evaluate(() => [sessions.at(-1).continuous, sessions.at(-1).interimResults]), [true, true]);
 });
 
-test('edits after the live range and a selected word survive speech revisions', async t => {
+test('editing later text invalidates old speech and resumes after the edit', async t => {
   const page = await setup(t);
   await emit(page, [['nice', false]]);
   await page.locator('#editor').focus();
   await page.locator('#editor').evaluate(e => e.setSelectionRange(e.value.length - 6, e.value.length));
   await page.keyboard.insertText('planet!');
-  await page.locator('#editor').evaluate(e => e.setSelectionRange(e.value.length - 7, e.value.length));
   await emit(page, [['beautiful', true]]);
-  assert.equal(await value(page), 'Hello beautiful planet!');
-  assert.equal(await page.locator('#editor').evaluate(e => e.value.slice(e.selectionStart, e.selectionEnd)), 'planet!');
+  assert.equal(await value(page), 'Hello nice planet!');
+  await page.waitForFunction(() => sessions.filter(s => s.onresult).length === 2);
+  await emit(page, [['Next', true]]);
+  assert.equal(await value(page), 'Hello nice planet! Next');
 });
 
-test('markdown changes shift the live range and undo stops before restoring text', async t => {
+test('formatting and undo redo retain recording intent and reject previous speech', async t => {
   const page = await setup(t);
   await emit(page, [['nice', false]]);
   await page.locator('#editor').focus();
   await page.locator('#editor').evaluate(e => e.setSelectionRange(0, 5));
   await page.locator('[data-format="bold"]').click();
   await emit(page, [['beautiful', true]]);
-  assert.equal(await value(page), '**Hello** beautiful world!');
-  await page.locator('#editor').press('Control+z');
   assert.equal(await value(page), '**Hello** nice world!');
-  assert.equal(await page.locator('#record-button').getAttribute('aria-pressed'), 'false');
+  await page.locator('#editor').press('Control+z');
+  assert.equal(await value(page), 'Hello nice world!');
+  assert.equal(await page.locator('#record-button').getAttribute('aria-pressed'), 'true');
   await page.locator('#editor').press('Control+Shift+z');
-  assert.equal(await value(page), '**Hello** beautiful world!');
+  assert.equal(await value(page), '**Hello** nice world!');
+  await page.waitForFunction(() => sessions.filter(s => s.onresult).length === 2);
+  await emit(page, [['next', true]]);
+  assert.equal(await value(page), '**Hello next ** nice world!');
 });
 
-test('composition defers speech and flushes after the committed edit', async t => {
+test('composition rejects old speech and resumes only after the committed edit', async t => {
   const page = await setup(t);
   await emit(page, [['nice', false]]);
   await page.locator('#editor').evaluate(e => {
@@ -114,9 +121,13 @@ test('composition defers speech and flushes after the committed edit', async t =
     e.dispatchEvent(new InputEvent('input', { inputType: 'insertCompositionText', isComposing: true }));
   });
   await emit(page, [['beautiful', true]]);
+  await page.waitForTimeout(350);
   assert.equal(await value(page), 'Hi nice world!');
+  assert.equal(await page.evaluate(() => sessions.filter(s => s.onresult).length), 1);
   await page.locator('#editor').evaluate(e => e.dispatchEvent(new CompositionEvent('compositionend')));
-  await page.waitForFunction(() => document.getElementById('editor').value === 'Hi beautiful world!');
+  await page.waitForFunction(() => sessions.filter(s => s.onresult).length === 2);
+  await emit(page, [['there', true]]);
+  assert.equal(await value(page), 'Hi there nice world!');
 });
 
 test('automatic reconnect preserves the anchor and rejects results from the old session', async t => {
@@ -139,13 +150,14 @@ test('stop retains the visible hypothesis and late results cannot alter it', asy
   assert.equal(await value(page), 'Hello nice world!');
 });
 
-test('deleting repeated characters before the range keeps its exact location', async t => {
+test('deleting repeated characters continues at the resulting caret', async t => {
   const page = await setup(t, 'aaaa END', 4);
   await page.locator('#editor').focus();
   await page.locator('#editor').evaluate(e => e.setSelectionRange(1, 1));
   await page.keyboard.press('Backspace');
+  await page.waitForFunction(() => sessions.filter(s => s.onresult).length === 2);
   await emit(page, [['word', true]]);
-  assert.equal(await value(page), 'aaa word END');
+  assert.equal(await value(page), 'word aaa END');
 });
 
 test('long dictation does not scroll an older correction out of view', async t => {
@@ -235,7 +247,7 @@ test('starting with selected text inserts after it without expanding the selecti
   assert.deepEqual(await page.locator('#editor').evaluate(e => [e.selectionStart, e.selectionEnd]), [0, 5]);
 });
 
-test('edits without beforeinput are preserved and stop dictation conservatively', async t => {
+test('edits without beforeinput are preserved and continue automatically', async t => {
   const page = await setup(t);
   await emit(page, [['nice', false]]);
   await page.locator('#editor').evaluate(e => {
@@ -244,7 +256,7 @@ test('edits without beforeinput are preserved and stop dictation conservatively'
   });
   await emit(page, [['different', true]]);
   assert.equal(await value(page), 'Changed Hello nice world!');
-  assert.equal(await page.locator('#record-button').getAttribute('aria-pressed'), 'false');
+  assert.equal(await page.locator('#record-button').getAttribute('aria-pressed'), 'true');
 });
 
 async function settings(page, { commands = 'explicit', words = '', replacements = '', punctuation = false } = {}) {
@@ -668,4 +680,63 @@ test('dragging a selection does not redirect at its transient collapsed start', 
   await emit(page, [['new', true]]);
   assert.equal(await value(page), 'Hello world new');
   assert.deepEqual(await page.locator('#editor').evaluate(e => [e.selectionStart, e.selectionEnd]), [0, 5]);
+});
+
+
+test('Android dictate, tap, type, dictate works without pressing resume', async t => {
+  const page = await setup(t, 'Hello world', 11, { userAgent: 'Mozilla/5.0 (Linux; Android 14) Chrome/130.0 Mobile Safari/537.36', hasTouch: true });
+  await emit(page, [['first', false]]);
+  await page.locator('#editor').evaluate(e => {
+    e.focus(); e.setSelectionRange(6, 6);
+    e.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  });
+  await page.keyboard.type('typed ', { delay: 20 });
+  await page.evaluate(() => {
+    sessions[0].emit([['stale final', true]]);
+    sessions[0].onerror({ error: 'not-allowed' });
+    sessions[0].onend();
+  });
+  assert.equal(await value(page), 'Hello typed world first');
+  assert.equal(await page.locator('#record-button').getAttribute('aria-pressed'), 'true');
+  await page.waitForFunction(() => sessions.filter(s => s.onresult).length === 2);
+  await emit(page, [['spoken', true]]);
+  assert.equal(await value(page), 'Hello typed spoken world first');
+});
+
+test('manual pause remains paused through typing, paste, navigation and undo', async t => {
+  const page = await setup(t, 'Hello world', 11);
+  await page.locator('#record-button').click();
+  await page.locator('#editor').focus();
+  await page.keyboard.press('Home');
+  await page.keyboard.insertText('Typed ');
+  await page.keyboard.press('Control+z');
+  await page.keyboard.press('Control+Shift+z');
+  await page.waitForTimeout(400);
+  assert.equal(await value(page), 'Typed Hello world');
+  assert.equal(await page.evaluate(() => sessions.filter(s => s.onresult).length), 1);
+  assert.equal(await page.locator('#record-button').getAttribute('aria-pressed'), 'false');
+  assert.match(await page.locator('#record-button').textContent(), /Resume dictation/);
+});
+
+test('typing at the live boundary protects the edit and subsequent final punctuation', async t => {
+  const page = await setup(t, '', 0);
+  await emit(page, [['Hello', false]]);
+  await page.locator('#editor').focus();
+  await page.keyboard.insertText(' there');
+  await emit(page, [['old phrase', true]]);
+  assert.equal(await value(page), 'Hello there');
+  await page.waitForFunction(() => sessions.filter(s => s.onresult).length === 2);
+  await emit(page, [['punctuation comma', true]]);
+  await emit(page, [['punctuation comma', true], ['friend', false]]);
+  assert.equal(await value(page), 'Hello there, friend');
+});
+
+test('composition followed by manual pause cannot restart dictation', async t => {
+  const page = await setup(t);
+  await page.locator('#editor').evaluate(e => e.dispatchEvent(new CompositionEvent('compositionstart')));
+  await page.locator('#record-button').click();
+  await page.locator('#editor').evaluate(e => e.dispatchEvent(new CompositionEvent('compositionend')));
+  await page.waitForTimeout(400);
+  assert.equal(await page.evaluate(() => sessions.filter(s => s.onresult).length), 1);
+  assert.equal(await page.locator('#record-button').getAttribute('aria-pressed'), 'false');
 });
