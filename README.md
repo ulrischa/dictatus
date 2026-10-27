@@ -12,7 +12,7 @@ A lightweight, installable, offline-first dictation and Markdown editor. Plain H
 - Undo/redo buttons and keyboard shortcuts with bounded, per-note history (up to 60 snapshots per direction, approximately 4 million UTF-16 units, or one larger snapshot). Interim revisions are grouped until finalization or a manual edit. Undo/redo invalidates old speech results and preserves whether dictation was enabled or paused; history is not persisted across reloads.
 - Composition input invalidates the old speech session and waits until the keyboard commits its text before reconnecting. Browser-ended sessions reconnect automatically after a short delay. Stopping keeps the currently visible words; unfinished words may still need correction.
 - Markdown toolbar appears when the editor receives focus.
-- Autosaved draft and local archive using `localStorage` (only text, not audio recordings).
+- Autosaved draft and local archive using `localStorage` (only text, not audio recordings). Leaving the title field immediately saves the title and adds a new draft to the archive, without a Save button. Renaming updates the same note. Empty drafts do not create empty archive entries.
 - Copy text, use Web Share when supported, export a Markdown file, import TXT/Markdown, and import/export a JSON archive.
 - Install as a PWA; the service worker caches the app shell for offline access.
 - Migrates storage from the previous single-file dictation editor (`diktat_single_file_v1`) when the browser origin is unchanged; also imports its JSON exports.
@@ -54,9 +54,9 @@ Open **Keyboard shortcuts** in the app for the complete action list. Button tool
 | Action | Shortcut |
 | --- | --- |
 | Pause / resume at cursor | Ctrl/Cmd + Shift + Space |
-| New / save note | Alt + Shift + N / S |
+| New note | Alt + Shift + N |
 | Copy / share text | Alt + Shift + C / H |
-| Export Markdown / archive | Alt + Shift + E / A |
+| Download Markdown / export archive | Alt + Shift + E / A |
 | Import / search archive | Alt + Shift + I / F |
 | Toggle speech settings / save them | Alt + Shift + D / W |
 | Toggle shortcut help | Alt + Shift + K |
@@ -79,8 +79,8 @@ Command conversion waits for a final recognition result: provisional text shows 
 - In either command mode, “new line” / “neue Zeile” creates a newline; “new paragraph” / “neuer Absatz” creates a blank line. Speak a complete command together. Commands split across finalized recognition results are not combined.
 - **Off:** no app-level command conversion. The browser may still produce its own punctuation.
 - **Automatic punctuation:** opt-in, enabled only if the browser exposes `unspokenPunctuation`. The capability status reports when unavailable. Accuracy depends on the engine.
-- **Help with a difficult word:** enter the correct spelling, such as `quinoa`, and choose **Add word**. Each saved word has a remove button. Up to 100 entries. The app sends recognition hints using `SpeechRecognitionPhrase` with a moderate boost when supported. Hints are not training and may be sent to a remote recognition provider. A rejected hint feature retries without hints.
-- **Fix a repeated mistake:** enter `keen wah` under **What appears incorrectly?** and `quinoa` under **What should appear instead?**, then choose **Add correction**. No special notation is needed. Up to 100 corrections. Matching is case-insensitive and respects Unicode word boundaries. Longest matches win; replacements do not cascade. Example: `keen wah => quinoa`. Corrections affect new speech only, after command processing, never manually edited text.
+- **Suggest the correct spelling:** enter the correct spelling, such as `quinoa` (not a pronunciation or phonetic transcription), and choose **Add word**. Each saved word has a remove button. Up to 100 entries. The app sends recognition hints using `SpeechRecognitionPhrase` with a moderate boost when supported. Hints are not training and may be sent to a remote recognition provider. A rejected hint feature retries without hints.
+- **Replace misrecognized text:** enter `keen wah` under **What appears incorrectly?** and `quinoa` under **What should appear instead?**, then choose **Add correction**. No special notation is needed. Up to 100 corrections. Matching is case-insensitive and respects Unicode word boundaries. Longest matches win; replacements do not cascade. Example: `keen wah => quinoa`. Corrections affect new speech only, after command processing, never manually edited text.
 
 Speech settings persist locally under `dictatus_speech_settings_v1`. JSON archive exports include them; import asks whether to replace current settings. Archives without settings remain compatible. No external scripts, dictionaries or services are added by these features.
 

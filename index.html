@@ -92,6 +92,7 @@
     #speech-settings input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--primary); flex-shrink: 0; }
     #settings-status { min-height: 1.5em; }
     .settings-help, #settings-status, #speech-capabilities { font-size: .78rem; color: var(--muted); }
+    #speech-capabilities:empty { display: none; }
     .quick-help { font-size: .76rem; color: var(--muted); margin: 7px 0 0; }
     .bottom-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
     h2 { margin: 0; font-size: 1.1rem; letter-spacing: -.02em; }
@@ -174,13 +175,12 @@
         <div class="save-line">
           <label class="sr-only" for="note-title">Optional title</label>
           <input id="note-title" type="text" maxlength="160" placeholder="Title (optional)" autocomplete="off">
-          <button class="button primary" type="button" id="save-button">Save</button>
           <span class="autosave" id="autosave-indicator">● Autosave on</span>
         </div>
         <div class="bottom-actions">
-          <button class="button primary" type="button" id="copy-button">Copy text</button>
+          <button class="button primary" type="button" id="copy-button">Copy</button>
           <button class="button" type="button" id="share-button">↗ Share</button>
-          <button class="button" type="button" id="markdown-export-button">↓ Export Markdown</button>
+          <button class="button" type="button" id="markdown-export-button">Download</button>
         </div>
         <details id="speech-settings">
           <summary id="settings-toggle">Words &amp; dictation settings</summary>
@@ -201,13 +201,13 @@
             <p class="settings-help">Only available in browsers that support it.</p>
           <button type="button" class="button" id="save-speech-settings">Save punctuation settings</button>
           <p id="settings-status" role="status"></p>
-          <p id="speech-capabilities">Recognition capabilities are checked when dictation starts.</p>
+          <p id="speech-capabilities" role="status"></p>
           </div>
           <div class="settings-section">
-            <h3>Help with a difficult word</h3>
-            <p class="settings-help" id="dictionary-help">Add the correct spelling of a name or an unusual word. This helps supported browsers recognize it; it does not guarantee the result.</p>
+            <h3>Suggest the correct spelling</h3>
+            <p class="settings-help" id="dictionary-help">Type the word exactly as you want it written, for example “quinoa”. Use normal spelling, not a pronunciation or phonetic spelling. This is an optional hint for browsers that support it, not an automatic correction. If the same wrong text keeps appearing, use “Replace misrecognized text” below.</p>
             <form id="word-form" class="entry-form">
-              <label for="word-entry">Word to recognize</label>
+              <label for="word-entry">Correct spelling</label>
               <div class="entry-line"><input id="word-entry" placeholder="For example: quinoa" maxlength="300" required autocomplete="off" aria-describedby="dictionary-help"><button class="button" type="submit" id="add-word">Add word</button></div>
             </form>
             <p id="word-feedback" class="settings-help" role="status"></p>
@@ -215,8 +215,8 @@
             <input type="hidden" id="custom-words">
           </div>
           <div class="settings-section">
-            <h3>Fix a repeated mistake</h3>
-            <p class="settings-help" id="replacement-help">If a word keeps coming out wrong, tell Dictatus what to replace it with. This works in every supported browser and only changes new dictated text.</p>
+            <h3>Replace misrecognized text</h3>
+            <p class="settings-help" id="replacement-help">Copy the incorrect text from your dictation into the first field. Enter the correct text in the second. For example: if the app writes “keen wah”, replace it with “quinoa”. Enter what actually appeared, not how you pronounce the word. The replacement applies to future dictation in every supported browser.</p>
             <form id="correction-form" class="entry-form">
               <div class="correction-fields">
                 <div><label for="heard-entry">What appears incorrectly?</label><input id="heard-entry" placeholder="For example: keen wah" maxlength="140" required autocomplete="off"></div>
@@ -471,9 +471,9 @@
         try {
           if (disableHints || !('phrases' in instance) || typeof window.SpeechRecognitionPhrase !== 'function') throw new Error('Unavailable');
           instance.phrases = words.map(word => new window.SpeechRecognitionPhrase(word, 3));
-          capabilities.push('Word hints enabled');
+          capabilities.push('Word hints enabled: your saved spellings are sent to recognition');
         } catch {
-          capabilities.push('Word hints unavailable');
+          capabilities.push('Word hints unavailable in this browser. Use text replacements for recurring errors');
         }
       }
       if (speechSettings.punctuation) {
@@ -486,7 +486,7 @@
         }
       }
       if (replacementRules.length) capabilities.push('Local corrections enabled');
-      getElement('speech-capabilities').textContent = capabilities.join(' · ') || 'No optional recognition features requested.';
+      getElement('speech-capabilities').textContent = capabilities.join(' · ');
     }
 
     function newId() {
@@ -550,10 +550,10 @@
       updateCount();
     }
 
-    function flushSave() {
+    function flushSave(updateArchive = true) {
       clearTimeout(saveTimer);
       persist();
-      renderArchive();
+      if (updateArchive) renderArchive();
     }
 
     function toast(message) {
@@ -571,7 +571,7 @@
       return line.replace(/^\s*(?:#{1,6}\s+|>\s*|[-*]\s+|\d+\.\s+)/, '').trim().slice(0, 65) || 'Untitled note';
     }
 
-    function saveCurrent(notify = true) {
+    function saveCurrent(notify = true, updateArchive = true) {
       if (!editor.value.trim() && !titleInput.value.trim()) {
         if (notify) toast('Nothing to save yet.');
         return false;
@@ -582,7 +582,7 @@
         state.notes.unshift(note);
         state.activeId = note.id;
       }
-      flushSave();
+      flushSave(updateArchive);
       if (notify) toast(storageAvailable ? 'Saved to archive.' : 'Could not save. Please export your text.');
       return true;
     }
@@ -1235,10 +1235,9 @@
 
     const actionShortcuts = [
       ['n', 'new-button', 'New note'],
-      ['s', 'save-button', 'Save note'],
-      ['c', 'copy-button', 'Copy text'],
+      ['c', 'copy-button', 'Copy'],
       ['h', 'share-button', 'Share text'],
-      ['e', 'markdown-export-button', 'Export Markdown'],
+      ['e', 'markdown-export-button', 'Download'],
       ['a', 'export-button', 'Export archive'],
       ['i', 'import-button', 'Import'],
       ['f', 'archive-search', 'Search archive'],
@@ -1320,7 +1319,6 @@
     getElement('save-speech-settings').addEventListener('click', saveSpeechSettings);
     document.addEventListener('keydown', handleShortcut);
     getElement('new-button').addEventListener('click', newNote);
-    getElement('save-button').addEventListener('click', () => saveCurrent(true));
     getElement('copy-button').addEventListener('click', copyText);
     getElement('share-button').addEventListener('click', shareText);
     getElement('markdown-export-button').addEventListener('click', exportMarkdown);
@@ -1390,6 +1388,13 @@
       button.addEventListener('click', () => restoreHistory(redo));
     }
     titleInput.addEventListener('input', scheduleSave);
+    titleInput.addEventListener('blur', event => {
+      // Archive a titled draft immediately, including titles without body text.
+      // Clearing the last content still needs to persist without creating an empty note.
+      // Keep an archive button alive when blur precedes its click or keyboard focus.
+      const updateArchive = !event.relatedTarget?.closest('.archive-item');
+      if (!saveCurrent(false, updateArchive)) flushSave(updateArchive);
+    });
     document.querySelectorAll('[data-format]').forEach((button) => {
       // Preserve the textarea selection when using the toolbar with a mouse.
       button.addEventListener('pointerdown', (event) => event.preventDefault());

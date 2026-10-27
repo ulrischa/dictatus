@@ -392,7 +392,6 @@ test('replacement metacharacters and replacement dollar signs stay literal', asy
 test('keyboard actions save, create and find notes without changing existing editor shortcuts', async t => {
   const page = await setup(t, 'Keyboard note', 13);
   await page.keyboard.press('Control+Shift+Space');
-  await page.keyboard.press('Alt+Shift+s');
   assert.equal(await page.locator('.archive-item').count(), 1);
   await page.keyboard.press('Alt+Shift+n');
   assert.equal(await value(page), '');
@@ -414,7 +413,7 @@ test('keyboard markdown formats the selection and undo restores it', async t => 
 test('every app action shortcut routes to its accessible control', async t => {
   const page = await setup(t, 'Routing', 7);
   await page.keyboard.press('Control+Shift+Space');
-  const bindings = [['s','save-button'],['c','copy-button'],['h','share-button'],['e','markdown-export-button'],['a','export-button'],['i','import-button'],['n','new-button'],['d','settings-toggle'],['w','save-speech-settings'],['k','shortcuts-toggle'],['u','undo-button'],['r','redo-button']];
+  const bindings = [['c','copy-button'],['h','share-button'],['e','markdown-export-button'],['a','export-button'],['i','import-button'],['n','new-button'],['d','settings-toggle'],['w','save-speech-settings'],['k','shortcuts-toggle'],['u','undo-button'],['r','redo-button']];
   await page.evaluate(bindings => {
     window.shortcutClicks = [];
     for (const [, id] of bindings) {
@@ -739,4 +738,53 @@ test('composition followed by manual pause cannot restart dictation', async t =>
   await page.waitForTimeout(400);
   assert.equal(await page.evaluate(() => sessions.filter(s => s.onresult).length), 1);
   assert.equal(await page.locator('#record-button').getAttribute('aria-pressed'), 'false');
+});
+
+
+test('title blur saves a new note and later renames it without a Save button', async t => {
+  const page = await setup(t, '', 0);
+  await page.locator('#record-button').click();
+  assert.equal(await page.locator('#save-button').count(), 0);
+  await page.locator('#note-title').fill('First title');
+  await page.locator('#editor').focus();
+  assert.equal(await page.locator('.archive-item').count(), 1);
+  let saved = await page.evaluate(() => JSON.parse(localStorage.getItem('dictatus_v1')));
+  assert.equal(saved.notes[0].title, 'First title');
+  const id = saved.notes[0].id;
+  await page.locator('#note-title').fill('Renamed');
+  await page.locator('#editor').focus();
+  saved = await page.evaluate(() => JSON.parse(localStorage.getItem('dictatus_v1')));
+  assert.equal(saved.notes.length, 1);
+  assert.equal(saved.notes[0].id, id);
+  assert.equal(saved.notes[0].title, 'Renamed');
+  await page.locator('#note-title').fill('');
+  await page.locator('#editor').focus();
+  await page.reload();
+  assert.equal(await page.locator('#note-title').inputValue(), '');
+  assert.equal(await page.locator('#copy-button').textContent(), 'Copy');
+  assert.equal(await page.locator('#markdown-export-button').textContent(), 'Download');
+});
+
+test('empty title blur creates no empty note and default capabilities remain silent', async t => {
+  const page = await setup(t, '', 0);
+  await page.locator('#note-title').focus();
+  await page.locator('#editor').focus();
+  assert.equal(await page.locator('.archive-item').count(), 0);
+  assert.equal(await page.locator('#speech-capabilities').textContent(), '');
+  assert.equal(await page.locator('#speech-capabilities').isVisible(), false);
+  assert.match(await page.locator('#dictionary-help').textContent(), /normal spelling, not a pronunciation/);
+});
+
+
+test('saving a title on blur preserves the click on another archived note', async t => {
+  const page = await setup(t, 'First body', 10);
+  await page.locator('#record-button').click();
+  await page.locator('#note-title').fill('First');
+  await page.locator('#new-button').click();
+  await page.locator('#note-title').fill('Second');
+  await page.locator('.archive-open').filter({ hasText: 'First' }).click();
+  assert.equal(await value(page), 'First body');
+  assert.equal(await page.locator('#note-title').inputValue(), 'First');
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('dictatus_v1')));
+  assert.ok(saved.notes.some(note => note.title === 'Second'));
 });
