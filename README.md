@@ -25,7 +25,7 @@ Copy the repository contents into a folder named `dictatus` on any HTTPS web ser
 
 ## Speech recognition and privacy
 
-The Web Speech API and microphone permission must be enabled in the browser. Dictatus does not use Windows Voice Typing or the Outlook dictation feature, but corporate/browser policies may still disable speech recognition or microphone access.
+The Web Speech API and microphone permission must be enabled in the browser. Dictatus does not use OS dictation feature, but corporate/browser policies may still disable speech recognition or microphone access.
 
 Recognition latency depends on the browser engine, speech segmentation (often a pause before final text), the microphone, and possibly a remote service. Dictatus enables interim results and displays them as soon as the browser provides them; JavaScript cannot force the browser to finalize words sooner.
 
