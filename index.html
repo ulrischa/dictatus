@@ -422,9 +422,9 @@
       const position = editor.selectionEnd;
       const previous = editor.value.charAt(position - 1);
       const next = editor.value.charAt(position);
-      const startsWithPunctuation = /^[.,!?;:)}\\]]/u.test(text);
-      const prefix = position === 0 || /[\\s([{“‘"']/u.test(previous) || startsWithPunctuation ? '' : ' ';
-      const suffix = next && !/[\\s.,!?;:)}\\]]/u.test(next) ? ' ' : '';
+      const startsWithPunctuation = /^[.,!?;:)}\]]/u.test(text);
+      const prefix = position === 0 || /[\s([{“‘"']/u.test(previous) || startsWithPunctuation ? '' : ' ';
+      const suffix = next && !/[\s.,!?;:)}\]]/u.test(next) ? ' ' : '';
 
       // Advance the caret so the next phrase follows unless the user moves it.
       editor.setRangeText(prefix + text + suffix, position, position, 'end');
