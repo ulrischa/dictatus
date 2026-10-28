@@ -53,7 +53,8 @@
     .mode-badge.offline { color: #086946; background: #e8f8f1; border-color: #ade6cc; }
     .mode-badge.browser { color: #7b5620; background: #fff8e8; border-color: #e6d9ac; }
     .editor-wrap { position: relative; }
-    .toolbar { display: flex; gap: 4px; flex-wrap: wrap; background: #f5f7fc; border: 1px solid var(--line); border-radius: 10px; padding: 6px; margin-bottom: 8px; }
+    .toolbar { display: flex; visibility: hidden; gap: 4px; flex-wrap: wrap; background: #f5f7fc; border: 1px solid var(--line); border-radius: 10px; padding: 6px; margin-bottom: 8px; }
+    .editor-wrap:focus-within .toolbar { visibility: visible; }
     .tool { min-width: 36px; min-height: 40px; padding: 7px 8px; color: #36435c; border: 1px solid transparent; border-radius: 7px; background: transparent; font-size: .83rem; font-weight: 650; }
     .tool:hover { background: #fff; border-color: var(--line); }
     .separator { margin: 4px 2px; background: #d6dfea; width: 1px; }
