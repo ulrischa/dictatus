@@ -34,6 +34,9 @@
     .page { max-width: 1180px; margin: auto; padding: 28px 22px 50px; }
     .page-header { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 20px; }
     h1 { font-size: clamp(1.7rem, 4vw, 2.3rem); letter-spacing: -.045em; margin: 0; line-height: 1.2; font-family: Georgia, serif; }
+    .header-actions { display: flex; flex-direction: column; gap: 6px; }
+    .layout.archive-collapsed { grid-template-columns: minmax(0, 1fr); }
+    #archive-panel[hidden] { display: none; }
     .layout { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 19px; align-items: start; }
     .panel { min-width: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 24px; box-shadow: 0 3px 14px rgba(25,48,89,.035); }
     .button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: 1px solid var(--line); background: #fff; color: var(--text); padding: 10px 13px; border-radius: 7px; font-size: .88rem; line-height: 1.25; font-weight: 650; }
@@ -138,7 +141,10 @@
   <main class="page">
     <header class="page-header">
       <h1>👩‍🏫 Dictatus</h1>
-      <button type="button" class="button" id="new-button">＋ New</button>
+      <div class="header-actions">
+        <button type="button" class="button" id="new-button">＋ New</button>
+        <button type="button" class="button" id="archive-toggle" aria-expanded="true" aria-controls="archive-panel">Hide archive</button>
+      </div>
     </header>
 
     <div class="layout">
@@ -246,8 +252,8 @@
         </details>
       </section>
 
-      <aside class="panel" aria-labelledby="archive-heading">
-        <div class="archive-heading"><h2 id="archive-heading">Archive</h2><span class="archive-count" id="archive-count">0 notes</span></div>
+      <aside class="panel" id="archive-panel" aria-labelledby="archive-heading">
+        <div class="archive-heading"><h2 id="archive-heading">Archive</h2><span class="archive-count" id="archive-count">0 notes</span><button type="button" class="tool" id="archive-close" aria-label="Hide archive" title="Hide archive">×</button></div>
         <label for="archive-search" class="sr-only">Search archive</label>
         <input id="archive-search" type="search" placeholder="Search archive…" autocomplete="off">
         <div class="archive-list" id="archive-list"></div>
@@ -694,6 +700,18 @@
         row.append(openButton, meta);
         list.append(row);
       }
+    }
+
+    function setArchiveOpen(open, focusSearch = false) {
+      const panel = getElement('archive-panel');
+      const restoreFocus = !open && panel.contains(document.activeElement);
+      panel.hidden = !open;
+      document.querySelector('.layout').classList.toggle('archive-collapsed', !open);
+      getElement('archive-toggle').setAttribute('aria-expanded', String(open));
+      getElement('archive-toggle').textContent = open ? 'Hide archive' : 'Show archive';
+      try { localStorage.setItem('dictatus_archive_open', String(open)); } catch {}
+      if (restoreFocus) getElement('archive-toggle').focus();
+      if (open && focusSearch) getElement('archive-search').focus();
     }
 
     function canSwitchNotes() {
@@ -1283,6 +1301,7 @@
       ['c', 'copy-button', 'Copy'],
       ['l', 'selection-correction', 'Add correction from selected text'],
       ['m', 'format-toggle', 'Show formatting'],
+      ['b', 'archive-toggle', 'Show / hide archive'],
       ['h', 'share-button', 'Share text'],
       ['e', 'markdown-export-button', 'Download'],
       ['a', 'export-button', 'Export archive'],
@@ -1340,6 +1359,7 @@
         const element = getElement(shortcut[1]);
         if (element.disabled) return;
         if (shortcut[1] === 'archive-search') {
+          setArchiveOpen(true);
           element.focus();
           element.select();
         } else {
@@ -1401,6 +1421,11 @@
       event.target.value = '';
     });
     getElement('archive-search').addEventListener('input', renderArchive);
+    getElement('archive-toggle').addEventListener('click', () => {
+      const open = getElement('archive-panel').hidden;
+      setArchiveOpen(open, open && matchMedia('(max-width: 900px)').matches);
+    });
+    getElement('archive-close').addEventListener('click', () => setArchiveOpen(false));
     editor.addEventListener('beforeinput', (event) => {
       beforeEdit = editorSnapshot();
       continueAfterEdit();
@@ -1483,6 +1508,7 @@
       if (document.visibilityState === 'hidden') persist();
     });
 
+    try { setArchiveOpen(localStorage.getItem('dictatus_archive_open') !== 'false'); } catch {}
     initializeShortcuts();
     loadSpeechSettings();
     loadState();

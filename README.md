@@ -55,6 +55,7 @@ Open **Keyboard shortcuts** in the app for the complete action list. Button tool
 | --- | --- |
 | Pause / resume at cursor | Ctrl/Cmd + Shift + Space |
 | New note | Alt + Shift + N |
+| Show / hide archive | Alt + Shift + B |
 | Show formatting | Alt + Shift + M |
 | Add correction from selected text | Alt + Shift + L |
 | Copy / share text | Alt + Shift + C / H |
@@ -116,3 +117,5 @@ MIT (see LICENSE).
 The textarea requests native spellchecking, with its `lang` set to the same language as speech recognition rather than inheriting the English interface language. Recognition updates remain inline. Checking of newly dictated words and sentences, available dictionaries and spelling underlines are controlled by the browser and keyboard settings. There is no standard API to force a spellcheck pass or read the browser's spelling markers. Dictatus does not simulate typing, replace the editor or move focus after speech results to try to force a check.
 
 Select an incorrectly written word or short phrase to reveal **Correct** in the editor row, then choose it (Alt + Shift + L). The correction form opens with the actual selected text already entered. Type the correct spelling and choose **Add correction** or press Enter. This stores a rule for future dictated text; it does not automatically replace existing occurrences or add a word to the browser's own dictionary. You can use this action on any selected text, including a word underlined by the browser. No external spellchecking service is added.
+
+The Show / Hide archive button below New collapses the sidebar and gives its width to the editor. This preference persists locally. On narrow screens, opening the archive focuses its search field; the close button returns focus to the toggle. The search shortcut also opens a collapsed archive.

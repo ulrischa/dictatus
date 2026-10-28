@@ -414,7 +414,7 @@ test('keyboard markdown formats the selection and undo restores it', async t => 
 test('every app action shortcut routes to its accessible control', async t => {
   const page = await setup(t, 'Routing', 7);
   await page.keyboard.press('Control+Shift+Space');
-  const bindings = [['m','format-toggle'],['l','selection-correction'],['c','copy-button'],['h','share-button'],['e','markdown-export-button'],['a','export-button'],['i','import-button'],['n','new-button'],['d','settings-toggle'],['w','save-speech-settings'],['k','shortcuts-toggle'],['u','undo-button'],['r','redo-button']];
+  const bindings = [['b','archive-toggle'],['m','format-toggle'],['l','selection-correction'],['c','copy-button'],['h','share-button'],['e','markdown-export-button'],['a','export-button'],['i','import-button'],['n','new-button'],['d','settings-toggle'],['w','save-speech-settings'],['k','shortcuts-toggle'],['u','undo-button'],['r','redo-button']];
   await page.evaluate(bindings => {
     window.shortcutClicks = [];
     for (const [, id] of bindings) {
@@ -902,4 +902,27 @@ test('compact controls and selection action never move the editor at mobile and 
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
     await page.keyboard.press('Escape');
   }
+});
+
+
+test('archive collapses, frees editor width, persists and reopens for search', async t => {
+  const page = await setup(t, 'Archived', 8);
+  await page.locator('#record-button').click();
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const before = (await page.locator('#editor').boundingBox()).width;
+  await page.locator('#archive-toggle').click();
+  assert.equal(await page.locator('#archive-panel').isVisible(), false);
+  assert.ok((await page.locator('#editor').boundingBox()).width > before);
+  assert.equal(await page.locator('#archive-toggle').getAttribute('aria-expanded'), 'false');
+  await page.reload();
+  assert.equal(await page.locator('#archive-panel').isVisible(), false);
+  await page.keyboard.press('Alt+Shift+f');
+  assert.equal(await page.locator('#archive-panel').isVisible(), true);
+  assert.equal(await page.locator('#archive-search').evaluate(e => e === document.activeElement), true);
+  await page.locator('#archive-close').click();
+  assert.equal(await page.locator('#archive-toggle').evaluate(e => e === document.activeElement), true);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.locator('#archive-toggle').click();
+  assert.equal(await page.locator('#archive-search').evaluate(e => e === document.activeElement), true);
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
 });
