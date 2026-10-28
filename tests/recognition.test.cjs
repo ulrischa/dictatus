@@ -842,3 +842,22 @@ test('adding a correction during Android dictation applies it to the next phrase
   await emit(page, [['keen wah', true]]);
   assert.equal(await value(page), 'keen wah quinoa');
 });
+
+test('case-only schubidam correction applies immediately and after reload', async t => {
+  const page = await setup(t, 'schubidam', 9, { userAgent: 'Mozilla/5.0 (Linux; Android 14) Chrome/130.0 Mobile Safari/537.36', hasTouch: true });
+  await page.locator('#editor').evaluate(e => { e.focus(); e.setSelectionRange(0, 9); });
+  await page.locator('#selection-correction').click();
+  await page.locator('#replacement-entry').fill('Schubidam');
+  await page.locator('#replacement-entry').press('Enter');
+  assert.match(await page.locator('#correction-list').textContent(), /schubidam → Schubidam/);
+  await page.waitForFunction(() => sessions.filter(s => s.onresult).length === 2);
+  await emit(page, [['schubidam', false]]);
+  assert.equal(await value(page), 'schubidam Schubidam');
+  await emit(page, [['schubidam', true]]);
+  assert.equal(await value(page), 'schubidam Schubidam');
+  await page.reload();
+  await page.locator('#editor').evaluate(e => e.setSelectionRange(e.value.length, e.value.length));
+  await page.locator('#record-button').click();
+  await emit(page, [['schubidam', true]]);
+  assert.equal(await value(page), 'schubidam Schubidam Schubidam');
+});
