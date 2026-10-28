@@ -97,6 +97,7 @@ test('formatting and undo redo retain recording intent and reject previous speec
   await emit(page, [['nice', false]]);
   await page.locator('#editor').focus();
   await page.locator('#editor').evaluate(e => e.setSelectionRange(0, 5));
+  await page.locator('#format-toggle').click();
   await page.locator('[data-format="bold"]').click();
   await emit(page, [['beautiful', true]]);
   assert.equal(await value(page), '**Hello** nice world!');
@@ -413,7 +414,7 @@ test('keyboard markdown formats the selection and undo restores it', async t => 
 test('every app action shortcut routes to its accessible control', async t => {
   const page = await setup(t, 'Routing', 7);
   await page.keyboard.press('Control+Shift+Space');
-  const bindings = [['l','selection-correction'],['c','copy-button'],['h','share-button'],['e','markdown-export-button'],['a','export-button'],['i','import-button'],['n','new-button'],['d','settings-toggle'],['w','save-speech-settings'],['k','shortcuts-toggle'],['u','undo-button'],['r','redo-button']];
+  const bindings = [['m','format-toggle'],['l','selection-correction'],['c','copy-button'],['h','share-button'],['e','markdown-export-button'],['a','export-button'],['i','import-button'],['n','new-button'],['d','settings-toggle'],['w','save-speech-settings'],['k','shortcuts-toggle'],['u','undo-button'],['r','redo-button']];
   await page.evaluate(bindings => {
     window.shortcutClicks = [];
     for (const [, id] of bindings) {
@@ -860,4 +861,45 @@ test('case-only schubidam correction applies immediately and after reload', asyn
   await page.locator('#record-button').click();
   await emit(page, [['schubidam', true]]);
   assert.equal(await value(page), 'schubidam Schubidam Schubidam');
+});
+
+
+test('compact format panel preserves selection and closes after formatting, Escape and outside click', async t => {
+  const page = await setup(t, 'Hello world', 11);
+  await page.locator('#record-button').click();
+  await page.locator('#editor').evaluate(e => { e.focus(); e.setSelectionRange(0, 5); });
+  await page.locator('#format-toggle').click();
+  assert.equal(await page.locator('#format-menu').isVisible(), true);
+  await page.locator('[data-format="bold"]').click();
+  assert.equal(await value(page), '**Hello** world');
+  assert.equal(await page.locator('#format-menu').isVisible(), false);
+  await page.locator('#format-toggle').focus();
+  await page.keyboard.press('Enter');
+  assert.equal(await page.locator('[data-format="h1"]').evaluate(e => e === document.activeElement), true);
+  await page.keyboard.press('Escape');
+  assert.equal(await page.locator('#format-toggle').getAttribute('aria-expanded'), 'false');
+  assert.equal(await page.locator('#format-toggle').evaluate(e => e === document.activeElement), true);
+  await page.locator('#format-toggle').click();
+  await page.locator('#note-title').click();
+  assert.equal(await page.locator('#format-menu').isVisible(), false);
+});
+
+test('compact controls and selection action never move the editor at mobile and desktop widths', async t => {
+  const page = await setup(t, 'Hello world', 11);
+  await page.locator('#record-button').click();
+  const position = () => page.locator('#editor').evaluate(e => e.getBoundingClientRect().top + scrollY);
+  for (const width of [320,390,768,1440]) {
+    await page.setViewportSize({width,height:900});
+    await page.locator('#note-title').focus();
+    const top = await position();
+    assert.equal(await page.locator('#selection-correction').isVisible(), false);
+    await page.locator('#editor').evaluate(e => { e.focus(); e.setSelectionRange(0,5); });
+    await page.locator('#selection-correction').waitFor({state:'visible'});
+    assert.equal(await position(), top);
+    await page.locator('#format-toggle').click();
+    assert.equal(await position(), top);
+    assert.ok((await page.locator('.editor-controls').boundingBox()).height <= 48);
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    await page.keyboard.press('Escape');
+  }
 });

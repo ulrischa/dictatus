@@ -53,8 +53,12 @@
     .mode-badge.offline { color: #086946; background: #e8f8f1; border-color: #ade6cc; }
     .mode-badge.browser { color: #7b5620; background: #fff8e8; border-color: #e6d9ac; }
     .editor-wrap { position: relative; }
-    .toolbar { display: flex; visibility: hidden; gap: 4px; flex-wrap: wrap; background: #f5f7fc; border: 1px solid var(--line); border-radius: 10px; padding: 6px; margin-bottom: 8px; }
-    .editor-wrap:focus-within .toolbar { visibility: visible; }
+    .editor-controls { display: flex; align-items: center; gap: 4px; min-height: 44px; margin-bottom: 4px; }
+    .editor-controls .tool { min-width: 40px; min-height: 44px; }
+    #selection-correction { margin-left: auto; color: var(--blue, #304dc8); }
+    .toolbar { position: absolute; top: 48px; left: 0; z-index: 3; display: flex; gap: 4px; flex-wrap: wrap; width: min(100%, 430px); background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 8px; box-shadow: 0 6px 20px rgba(25,36,57,.14); }
+    .toolbar[hidden], .editor-controls [hidden] { display: none; }
+    #format-toggle[aria-expanded="true"] { background: var(--soft); color: #304dc8; }
     .tool { min-width: 36px; min-height: 40px; padding: 7px 8px; color: #36435c; border: 1px solid transparent; border-radius: 7px; background: transparent; font-size: .83rem; font-weight: 650; }
     .tool:hover { background: #fff; border-color: var(--line); }
     .separator { margin: 4px 2px; background: #d6dfea; width: 1px; }
@@ -150,10 +154,13 @@
         </div>
 
         <div class="editor-wrap">
-          <div class="toolbar" role="toolbar" aria-label="Markdown formatting">
-            <button class="tool" type="button" id="undo-button" title="Undo (Ctrl/Cmd+Z)">↶ Undo</button>
-            <button class="tool" type="button" id="redo-button" title="Redo (Ctrl/Cmd+Shift+Z)">↷ Redo</button>
-            <span class="separator" aria-hidden="true"></span>
+          <div class="editor-controls" role="group" aria-label="Editor actions">
+            <button class="tool" type="button" id="format-toggle" aria-expanded="false" aria-controls="format-menu">Format ▾</button>
+            <button class="tool" type="button" id="undo-button" title="Undo (Ctrl/Cmd+Z)" aria-label="Undo">↶</button>
+            <button class="tool" type="button" id="redo-button" title="Redo (Ctrl/Cmd+Shift+Z)" aria-label="Redo">↷</button>
+            <button class="tool" type="button" id="selection-correction" hidden aria-label="Add correction from selected text">Correct</button>
+          </div>
+          <div class="toolbar" id="format-menu" role="group" aria-label="Markdown formatting" hidden>
             <button class="tool" type="button" data-format="h1" title="Heading 1" aria-label="Heading 1">H1</button>
             <button class="tool" type="button" data-format="h2" title="Heading 2" aria-label="Heading 2">H2</button>
             <span class="separator" aria-hidden="true"></span>
@@ -171,11 +178,6 @@
           <textarea id="editor" spellcheck="true" placeholder="Speak or type…"></textarea>
         </div>
         <div class="editor-footer"><span id="word-count">0 words · 0 characters</span><span id="save-state" aria-live="polite">Autosave active</span></div>
-
-        <div id="selection-correction-actions" style="visibility: hidden">
-        <button class="button" type="button" id="selection-correction">Add correction from selected text</button>
-        <p class="settings-help">Select a word or phrase above to save its correct spelling. Browser spelling marks depend on your browser and keyboard settings.</p>
-        </div>
 
         <div class="save-line">
           <label class="sr-only" for="note-title">Optional title</label>
@@ -476,12 +478,17 @@
       return text;
     }
 
+    function setFormatMenu(open, returnFocus = false) {
+      getElement('format-menu').hidden = !open;
+      getElement('format-toggle').setAttribute('aria-expanded', String(open));
+      if (returnFocus) getElement('format-toggle').focus({ preventScroll: true });
+    }
+
     function updateSelectionCorrection() {
       const button = getElement('selection-correction');
       const selected = editor.value.slice(editor.selectionStart, editor.selectionEnd).trim();
       const focused = document.activeElement === editor || document.activeElement === button;
-      // Reserve the action's space so selecting text never moves the editor or controls.
-      getElement('selection-correction-actions').style.visibility = selected && focused ? 'visible' : 'hidden';
+      button.hidden = !(selected && focused);
     }
 
     function correctionFromSelection() {
@@ -1275,6 +1282,7 @@
       ['n', 'new-button', 'New note'],
       ['c', 'copy-button', 'Copy'],
       ['l', 'selection-correction', 'Add correction from selected text'],
+      ['m', 'format-toggle', 'Show formatting'],
       ['h', 'share-button', 'Share text'],
       ['e', 'markdown-export-button', 'Download'],
       ['a', 'export-button', 'Export archive'],
@@ -1356,6 +1364,25 @@
     getElement('correction-form').addEventListener('submit', event => addDictionaryEntry(event, true));
     getElement('selection-correction').addEventListener('pointerdown', event => event.preventDefault());
     getElement('selection-correction').addEventListener('click', correctionFromSelection);
+    getElement('format-toggle').addEventListener('pointerdown', event => event.preventDefault());
+    getElement('format-toggle').addEventListener('click', event => {
+      const open = getElement('format-menu').hidden;
+      setFormatMenu(open);
+      if (open && event.detail === 0) getElement('format-menu').querySelector('button').focus();
+    });
+    document.addEventListener('pointerdown', event => {
+      if (!event.target.closest('#format-menu, #format-toggle')) setFormatMenu(false);
+    });
+    document.addEventListener('focusin', event => {
+      if (!event.target.closest('#format-menu, #format-toggle, #editor') ||
+          (event.target === editor && event.relatedTarget?.closest('#format-menu'))) setFormatMenu(false);
+    });
+    document.addEventListener('keydown', event => {
+      if (event.key === 'Escape' && !getElement('format-menu').hidden) {
+        event.preventDefault();
+        setFormatMenu(false, true);
+      }
+    });
     editor.addEventListener('select', updateSelectionCorrection);
     editor.addEventListener('input', updateSelectionCorrection);
     document.addEventListener('selectionchange', updateSelectionCorrection);
@@ -1443,7 +1470,10 @@
     document.querySelectorAll('[data-format]').forEach((button) => {
       // Preserve the textarea selection when using the toolbar with a mouse.
       button.addEventListener('pointerdown', (event) => event.preventDefault());
-      button.addEventListener('click', () => formatMarkdown(button.dataset.format));
+      button.addEventListener('click', () => {
+        formatMarkdown(button.dataset.format);
+        setFormatMenu(false);
+      });
     });
     window.addEventListener('pagehide', () => {
       persist();

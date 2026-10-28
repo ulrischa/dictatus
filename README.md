@@ -11,7 +11,7 @@ A lightweight, installable, offline-first dictation and Markdown editor. Plain H
 - While dictation is enabled, typing, deleting, pasting, formatting, autocorrect and undo/redo keep it enabled. Every manual edit preserves the visible text, invalidates the old speech session, and continues insertion at the resulting selection end without replacing selected text. Late results cannot overwrite your edit, including changes to provisional words. Inputs without `beforeinput` follow the same rule.
 - Undo/redo buttons and keyboard shortcuts with bounded, per-note history (up to 60 snapshots per direction, approximately 4 million UTF-16 units, or one larger snapshot). Interim revisions are grouped until finalization or a manual edit. Undo/redo invalidates old speech results and preserves whether dictation was enabled or paused; history is not persisted across reloads.
 - Composition input invalidates the old speech session and waits until the keyboard commits its text before reconnecting. Browser-ended sessions reconnect automatically after a short delay. Stopping keeps the currently visible words; unfinished words may still need correction.
-- Markdown toolbar appears only while the editor or its formatting controls have focus. Its space remains reserved while hidden, so the text does not shift. Controls wrap on narrow screens without covering the text.
+- A compact editor row contains Format and undo/redo. Format opens a floating panel without moving the text; it closes after choosing a format, pressing Escape or clicking outside. The Correct action appears in the same row only for selected text. No large blank toolbar areas are reserved.
 - Autosaved draft and local archive using `localStorage` (only text, not audio recordings). Leaving the title field immediately saves the title and adds a new draft to the archive, without a Save button. Renaming updates the same note. Empty drafts do not create empty archive entries.
 - Copy text, use Web Share when supported, export a Markdown file, import TXT/Markdown, and import/export a JSON archive.
 - Install as a PWA; the service worker caches the app shell for offline access.
@@ -55,6 +55,7 @@ Open **Keyboard shortcuts** in the app for the complete action list. Button tool
 | --- | --- |
 | Pause / resume at cursor | Ctrl/Cmd + Shift + Space |
 | New note | Alt + Shift + N |
+| Show formatting | Alt + Shift + M |
 | Add correction from selected text | Alt + Shift + L |
 | Copy / share text | Alt + Shift + C / H |
 | Download Markdown / export archive | Alt + Shift + E / A |
@@ -114,4 +115,4 @@ MIT (see LICENSE).
 
 The textarea requests native spellchecking, with its `lang` set to the same language as speech recognition rather than inheriting the English interface language. Recognition updates remain inline. Checking of newly dictated words and sentences, available dictionaries and spelling underlines are controlled by the browser and keyboard settings. There is no standard API to force a spellcheck pass or read the browser's spelling markers. Dictatus does not simulate typing, replace the editor or move focus after speech results to try to force a check.
 
-Select an incorrectly written word or short phrase to reveal **Add correction from selected text**, then choose it (Alt + Shift + L). The correction form opens with the actual selected text already entered. Type the correct spelling and choose **Add correction** or press Enter. This stores a rule for future dictated text; it does not automatically replace existing occurrences or add a word to the browser's own dictionary. You can use this action on any selected text, including a word underlined by the browser. No external spellchecking service is added.
+Select an incorrectly written word or short phrase to reveal **Correct** in the editor row, then choose it (Alt + Shift + L). The correction form opens with the actual selected text already entered. Type the correct spelling and choose **Add correction** or press Enter. This stores a rule for future dictated text; it does not automatically replace existing occurrences or add a word to the browser's own dictionary. You can use this action on any selected text, including a word underlined by the browser. No external spellchecking service is added.
