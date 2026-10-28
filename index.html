@@ -172,6 +172,9 @@
         </div>
         <div class="editor-footer"><span id="word-count">0 words · 0 characters</span><span id="save-state" aria-live="polite">Autosave active</span></div>
 
+        <button class="button" type="button" id="selection-correction">Add correction from selected text</button>
+        <p class="settings-help">Select a word or phrase above to save its correct spelling. Browser spelling marks depend on your browser and keyboard settings.</p>
+
         <div class="save-line">
           <label class="sr-only" for="note-title">Optional title</label>
           <input id="note-title" type="text" maxlength="160" placeholder="Title (optional)" autocomplete="off">
@@ -268,6 +271,10 @@
     const modeBadge = getElement('mode-badge');
     const androidRecognition = navigator.userAgentData?.platform === 'Android' || /Android/i.test(navigator.userAgent) || (/Linux/i.test(navigator.platform) && navigator.maxTouchPoints > 0);
     const speechLanguage = navigator.language || navigator.languages?.[0] || 'en-US';
+    // The English interface must not determine the dictated text's spelling language.
+    editor.lang = speechLanguage;
+    getElement('replacement-entry').lang = speechLanguage;
+    getElement('replacement-entry').spellcheck = true;
 
     const blankState = () => ({ version: 1, activeId: null, draft: { title: '', text: '' }, notes: [] });
     let state = blankState();
@@ -461,6 +468,23 @@
           replacementRules.find(rule => rule.pattern.test(match))?.intended ?? match);
       }
       return text;
+    }
+
+    function correctionFromSelection() {
+      const selected = editor.value.slice(editor.selectionStart, editor.selectionEnd).trim();
+      if (!selected) {
+        toast('Select the incorrectly written word or phrase in the text first.');
+        return;
+      }
+      if (selected.length > 140 || /[\r\n]/.test(selected)) {
+        toast('Select a word or short phrase on one line (up to 140 characters).');
+        return;
+      }
+      getElement('speech-settings').open = true;
+      getElement('heard-entry').value = selected;
+      getElement('replacement-entry').value = '';
+      getElement('correction-feedback').textContent = 'Enter the correct spelling, then choose Add correction. It will apply to future dictation.';
+      getElement('replacement-entry').focus();
     }
 
     function configureSpeechFeatures(instance) {
@@ -1236,6 +1260,7 @@
     const actionShortcuts = [
       ['n', 'new-button', 'New note'],
       ['c', 'copy-button', 'Copy'],
+      ['l', 'selection-correction', 'Add correction from selected text'],
       ['h', 'share-button', 'Share text'],
       ['e', 'markdown-export-button', 'Download'],
       ['a', 'export-button', 'Export archive'],
@@ -1315,6 +1340,8 @@
 
     getElement('word-form').addEventListener('submit', event => addDictionaryEntry(event, false));
     getElement('correction-form').addEventListener('submit', event => addDictionaryEntry(event, true));
+    getElement('selection-correction').addEventListener('pointerdown', event => event.preventDefault());
+    getElement('selection-correction').addEventListener('click', correctionFromSelection);
     recordButton.addEventListener('click', toggleRecording);
     getElement('save-speech-settings').addEventListener('click', saveSpeechSettings);
     document.addEventListener('keydown', handleShortcut);

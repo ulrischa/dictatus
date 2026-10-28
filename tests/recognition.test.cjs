@@ -413,7 +413,7 @@ test('keyboard markdown formats the selection and undo restores it', async t => 
 test('every app action shortcut routes to its accessible control', async t => {
   const page = await setup(t, 'Routing', 7);
   await page.keyboard.press('Control+Shift+Space');
-  const bindings = [['c','copy-button'],['h','share-button'],['e','markdown-export-button'],['a','export-button'],['i','import-button'],['n','new-button'],['d','settings-toggle'],['w','save-speech-settings'],['k','shortcuts-toggle'],['u','undo-button'],['r','redo-button']];
+  const bindings = [['l','selection-correction'],['c','copy-button'],['h','share-button'],['e','markdown-export-button'],['a','export-button'],['i','import-button'],['n','new-button'],['d','settings-toggle'],['w','save-speech-settings'],['k','shortcuts-toggle'],['u','undo-button'],['r','redo-button']];
   await page.evaluate(bindings => {
     window.shortcutClicks = [];
     for (const [, id] of bindings) {
@@ -787,4 +787,42 @@ test('saving a title on blur preserves the click on another archived note', asyn
   assert.equal(await page.locator('#note-title').inputValue(), 'First');
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('dictatus_v1')));
   assert.ok(saved.notes.some(note => note.title === 'Second'));
+});
+
+
+test('spellchecking language matches dictation instead of the English interface', async t => {
+  const page = await setup(t, '', 0, { locale: 'de-DE' });
+  assert.equal(await page.locator('#editor').getAttribute('lang'), 'de-DE');
+  assert.equal(await page.locator('#editor').evaluate(e => e.spellcheck), true);
+  assert.equal(await page.evaluate(() => sessions.at(-1).lang), 'de-DE');
+});
+
+test('selected misspelling opens a correction form and persists a future dictation rule', async t => {
+  const page = await setup(t, 'keen wah', 8);
+  await page.locator('#editor').evaluate(e => { e.focus(); e.setSelectionRange(0, 8); });
+  await page.locator('#selection-correction').click();
+  assert.equal(await page.locator('#heard-entry').inputValue(), 'keen wah');
+  assert.equal(await page.locator('#replacement-entry').evaluate(e => e === document.activeElement), true);
+  await page.locator('#replacement-entry').fill('quinoa');
+  await page.locator('#replacement-entry').press('Enter');
+  assert.equal(await value(page), 'keen wah');
+  await page.reload();
+  await page.locator('#editor').evaluate(e => e.setSelectionRange(e.value.length, e.value.length));
+  await page.locator('#record-button').click();
+  await emit(page, [['keen wah', true]]);
+  assert.equal(await value(page), 'keen wah quinoa');
+});
+
+test('selection correction shortcut rejects absent and multiline selections without losing drafts', async t => {
+  const page = await setup(t, 'first\nsecond', 0);
+  await page.keyboard.press('Alt+Shift+l');
+  assert.match(await page.locator('#toast').textContent(), /Select the incorrectly/);
+  await page.locator('#heard-entry').evaluate(e => e.value = 'keep draft');
+  await page.locator('#editor').evaluate(e => e.setSelectionRange(0, e.value.length));
+  await page.keyboard.press('Alt+Shift+l');
+  assert.match(await page.locator('#toast').textContent(), /one line/);
+  assert.equal(await page.locator('#heard-entry').inputValue(), 'keep draft');
+  await page.locator('#editor').evaluate(e => e.setSelectionRange(0, 5));
+  await page.keyboard.press('Alt+Shift+l');
+  assert.equal(await page.locator('#heard-entry').inputValue(), 'first');
 });
