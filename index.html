@@ -369,9 +369,13 @@
           punctuation: getElement('auto-punctuation').checked
         });
         localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
-        if (speechWanted || recognition) stopForEditing('Settings saved. Resume at the cursor when ready.');
         applySpeechSettings(settings);
-        getElement('settings-status').textContent = 'Saved. Ready for your next dictation.';
+        // Apply rules immediately and refresh recognition hints without changing recording intent.
+        disableHints = false;
+        continueAfterEdit();
+        getElement('settings-status').textContent = speechWanted
+          ? 'Saved. Continuing dictation with your updated settings.'
+          : 'Saved. Ready for your next dictation.';
         return true;
       } catch (error) {
         getElement('settings-status').textContent = error.name === 'QuotaExceededError'

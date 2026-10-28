@@ -71,7 +71,7 @@ Use the top number row for Markdown shortcuts. Native keyboard navigation (Tab, 
 
 ## Speech commands and dictionary
 
-Open **Words & dictation settings** below the editor actions. Save punctuation choices with **Save punctuation settings**. Words and corrections save automatically when added or removed. Saving during dictation pauses it so a new session uses the updated configuration.
+Open **Words & dictation settings** below the editor actions. Save punctuation choices with **Save punctuation settings**. Words and corrections save automatically when added or removed. Saving during dictation keeps it enabled and automatically starts a fresh recognition session with the updated configuration. New corrections apply immediately to incoming interim and final text. Saving while paused does not start recording.
 
 Command conversion waits for a final recognition result: provisional text shows the spoken command words, then the confirmed result inserts the punctuation or line break. This prevents a tentative command from flashing as punctuation and disappearing when the browser revises it. Browser-generated punctuation and other interim text can still change before confirmation; the app cannot guarantee recognition accuracy. Confirmed punctuation is kept when subsequent interim words are revised or withdrawn. Pausing before confirmation keeps the visible, unconverted words.
 

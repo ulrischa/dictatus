@@ -826,3 +826,19 @@ test('selection correction shortcut rejects absent and multiline selections with
   await page.keyboard.press('Alt+Shift+l');
   assert.equal(await page.locator('#heard-entry').inputValue(), 'first');
 });
+
+test('adding a correction during Android dictation applies it to the next phrase without resuming', async t => {
+  const page = await setup(t, 'keen wah', 8, { userAgent: 'Mozilla/5.0 (Linux; Android 14) Chrome/130.0 Mobile Safari/537.36', hasTouch: true });
+  await page.locator('#editor').evaluate(e => { e.focus(); e.setSelectionRange(0, 8); });
+  await page.locator('#selection-correction').click();
+  await page.locator('#replacement-entry').fill('quinoa');
+  await page.locator('#replacement-entry').press('Enter');
+  assert.equal(await page.locator('#record-button').getAttribute('aria-pressed'), 'true');
+  await page.evaluate(() => sessions[0].emit([['obsolete', true]]));
+  assert.equal(await value(page), 'keen wah');
+  await page.waitForFunction(() => sessions.filter(s => s.onresult).length === 2);
+  await emit(page, [['KEEN WAH', false]]);
+  assert.equal(await value(page), 'keen wah quinoa');
+  await emit(page, [['keen wah', true]]);
+  assert.equal(await value(page), 'keen wah quinoa');
+});
