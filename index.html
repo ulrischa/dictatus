@@ -172,8 +172,10 @@
         </div>
         <div class="editor-footer"><span id="word-count">0 words · 0 characters</span><span id="save-state" aria-live="polite">Autosave active</span></div>
 
+        <div id="selection-correction-actions" style="visibility: hidden">
         <button class="button" type="button" id="selection-correction">Add correction from selected text</button>
         <p class="settings-help">Select a word or phrase above to save its correct spelling. Browser spelling marks depend on your browser and keyboard settings.</p>
+        </div>
 
         <div class="save-line">
           <label class="sr-only" for="note-title">Optional title</label>
@@ -472,6 +474,14 @@
           replacementRules.find(rule => rule.pattern.test(match))?.intended ?? match);
       }
       return text;
+    }
+
+    function updateSelectionCorrection() {
+      const button = getElement('selection-correction');
+      const selected = editor.value.slice(editor.selectionStart, editor.selectionEnd).trim();
+      const focused = document.activeElement === editor || document.activeElement === button;
+      // Reserve the action's space so selecting text never moves the editor or controls.
+      getElement('selection-correction-actions').style.visibility = selected && focused ? 'visible' : 'hidden';
     }
 
     function correctionFromSelection() {
@@ -1346,6 +1356,10 @@
     getElement('correction-form').addEventListener('submit', event => addDictionaryEntry(event, true));
     getElement('selection-correction').addEventListener('pointerdown', event => event.preventDefault());
     getElement('selection-correction').addEventListener('click', correctionFromSelection);
+    editor.addEventListener('select', updateSelectionCorrection);
+    editor.addEventListener('input', updateSelectionCorrection);
+    document.addEventListener('selectionchange', updateSelectionCorrection);
+    document.addEventListener('focusin', updateSelectionCorrection);
     recordButton.addEventListener('click', toggleRecording);
     getElement('save-speech-settings').addEventListener('click', saveSpeechSettings);
     document.addEventListener('keydown', handleShortcut);
