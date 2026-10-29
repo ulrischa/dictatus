@@ -140,6 +140,15 @@
     }
     @media (any-pointer: coarse) { .quick-help { display: none; } }
     @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+    .text-tools { display: flex; flex-wrap: wrap; gap: 6px; margin: -8px 0 14px; }
+    .text-tools[hidden], .text-tools button[hidden] { display: none; }
+    #text-dialog { width: min(720px, calc(100% - 24px)); max-height: 90dvh; box-sizing: border-box; border: 1px solid var(--line); border-radius: 12px; padding: 20px; color: var(--text); }
+    #text-dialog::backdrop { background: #18254466; }
+    #text-dialog h2 { margin: 0 0 8px; }
+    #text-dialog textarea { width: 100%; min-height: 100px; height: 150px; box-sizing: border-box; font: inherit; padding: 10px; }
+    #text-dialog label { display: block; margin: 10px 0 4px; }
+    #text-dialog label[hidden] { display: none; }
+    .text-dialog-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
   </style>
 </head>
 <body>
@@ -151,6 +160,12 @@
         <button type="button" class="button" id="archive-toggle" aria-expanded="true" aria-controls="archive-panel">Hide archive</button>
       </div>
     </header>
+    <nav class="text-tools" id="text-tools" aria-label="Text actions" hidden>
+      <button class="button" id="text-fix" type="button" hidden>Fix text</button>
+      <button class="button" id="text-rewrite" type="button" hidden>Rewrite</button>
+      <button class="button" id="text-summarize" type="button" hidden>Summarize</button>
+      <button class="button" id="text-translate" type="button" hidden>Translate</button>
+    </nav>
 
     <div class="layout">
       <section class="panel" aria-label="Dictation editor">
@@ -277,6 +292,20 @@
       </aside>
     </div>
   </main>
+  <dialog id="text-dialog" aria-labelledby="text-dialog-title">
+    <h2 id="text-dialog-title">Fix text</h2>
+    <p id="text-scope"></p>
+    <label>Text language <select id="text-source-language"></select></label>
+    <label id="text-target-field" hidden>Translate to <select id="text-target-language"></select></label>
+    <label for="text-original">Original</label><textarea id="text-original" readonly></textarea>
+    <label for="text-result">Preview</label><textarea id="text-result" readonly></textarea>
+    <p id="text-status" role="status" aria-live="polite"></p>
+    <div class="text-dialog-actions">
+      <button type="button" class="button" id="text-run" disabled>Generate preview</button>
+      <button type="button" class="button primary" id="text-apply" disabled>Apply</button>
+      <button type="button" class="button" id="text-cancel" autofocus>Cancel</button>
+    </div>
+  </dialog>
   <div id="toast" role="status" aria-live="polite"></div>
 
   <script>
@@ -300,6 +329,7 @@
 
     const blankState = () => ({ version: 1, activeId: null, draft: { title: '', text: '' }, notes: [] });
     let state = blankState();
+    let editorRevision = 0;
     let storageAvailable = true;
     let saveTimer = null;
     let toastTimer = null;
@@ -829,6 +859,7 @@
     }
 
     function resetEditorHistory() {
+      ++editorRevision;
       paused = false;
       updateRecordingUI();
       editorText = editor.value;
@@ -861,6 +892,7 @@
     }
 
     function restoreHistory(redo = false) {
+      ++editorRevision;
       if (composing) return;
       const source = redo ? redoStack : undoStack;
       if (!source.length) return;
@@ -880,6 +912,7 @@
     }
 
     function handleEditorInput(event) {
+      ++editorRevision;
       if (event.inputType === 'historyUndo' || event.inputType === 'historyRedo') {
         // Some native menus deliver a non-cancelable history event.
         const snapshot = beforeEdit || { ...editorSnapshot(), text: editorText };
@@ -933,6 +966,7 @@
           : position < start ? position
           : position >= end ? position + replacement.length - (end - start)
           : start + Math.min(position - start, replacement.length);
+        ++editorRevision;
         editor.setRangeText(replacement, start, end, 'preserve');
         editor.setSelectionRange(follow ? nextAnchor : mapPosition(snapshot.start),
           follow ? nextAnchor : mapPosition(snapshot.end, true), snapshot.direction);
@@ -1394,6 +1428,10 @@
 
     const actionShortcuts = [
       ['n', 'new-button', 'New note'],
+      ['p', 'text-fix', 'Fix text'],
+      ['j', 'text-rewrite', 'Rewrite'],
+      ['q', 'text-summarize', 'Summarize'],
+      ['t', 'text-translate', 'Translate'],
       ['o', 'allow-online', 'Allow online mode'],
       ['c', 'copy-button', 'Copy'],
       ['l', 'selection-correction', 'Add correction from selected text'],
@@ -1450,6 +1488,7 @@
     }
 
     function handleShortcut(event) {
+      if (getElement('text-dialog').open) return;
       if (event.defaultPrevented || event.isComposing || composing || event.getModifierState('AltGraph')) return;
       if (event.code === 'Space' && event.altKey && event.shiftKey && !event.ctrlKey && !event.metaKey) {
         event.preventDefault();
@@ -1697,6 +1736,171 @@
         if (holdSource || finishing) stopForEditing('Hold ended because the app is hidden. Visible text kept.');
       }
     });
+
+    const textTools = {
+      fix: { api: 'Proofreader', label: 'Fix text', method: 'proofread' },
+      rewrite: { api: 'Rewriter', label: 'Rewrite', method: 'rewrite' },
+      summarize: { api: 'Summarizer', label: 'Summarize', method: 'summarize' },
+      translate: { api: 'Translator', label: 'Translate', method: 'translate' }
+    };
+    const textLanguages = { en: 'English', de: 'German', fr: 'French', es: 'Spanish', it: 'Italian', pt: 'Portuguese', nl: 'Dutch', pl: 'Polish', uk: 'Ukrainian', ja: 'Japanese', ko: 'Korean', zh: 'Chinese' };
+    const textLanguage = speechLanguage.split('-')[0];
+    const textDialog = getElement('text-dialog');
+    let textJob = null;
+    let textCheck = 0;
+    function textOptions(kind, source = textLanguage, target = source) {
+      if (kind === 'translate') return { sourceLanguage: source, targetLanguage: target };
+      const options = { expectedInputLanguages: [source] };
+      if (kind !== 'fix') options.outputLanguage = source;
+      if (kind === 'rewrite') Object.assign(options, { tone: 'as-is', length: 'as-is', format: 'as-is' });
+      if (kind === 'summarize') Object.assign(options, { type: 'key-points', length: 'short', format: 'markdown' });
+      return options;
+    }
+    async function textAvailability(kind, options) {
+      const api = window[textTools[kind].api];
+      if (!window.isSecureContext || typeof api?.availability !== 'function' || typeof api?.create !== 'function') return 'unavailable';
+      try {
+        const status = await api.availability(options);
+        return ['available', 'downloadable', 'downloading'].includes(status) ? status : 'unavailable';
+      } catch { return 'unavailable'; }
+    }
+    async function refreshTextTools() {
+      await Promise.all(Object.keys(textTools).map(async kind => {
+        let supported;
+        if (kind === 'translate') {
+          const statuses = await Promise.all(Object.keys(textLanguages).filter(lang => lang !== textLanguage)
+            .map(lang => textAvailability(kind, textOptions(kind, textLanguage, lang))));
+          supported = statuses.some(status => status !== 'unavailable');
+        } else supported = await textAvailability(kind, textOptions(kind)) !== 'unavailable';
+        getElement('text-' + kind).hidden = !supported;
+      }));
+      getElement('text-tools').hidden = !Object.keys(textTools).some(kind => !getElement('text-' + kind).hidden);
+    }
+    function disposeTextJob() {
+      ++textCheck;
+      if (textJob) {
+        textJob.controller?.abort();
+        try { textJob.session?.destroy(); } catch {}
+      }
+      textJob = null;
+    }
+    async function checkTextOptions() {
+      const job = textJob;
+      if (!job || job.busy) return;
+      const check = ++textCheck;
+      getElement('text-run').disabled = true;
+      getElement('text-apply').disabled = true;
+      getElement('text-result').value = '';
+      job.result = null;
+      job.options = textOptions(job.kind, getElement('text-source-language').value, getElement('text-target-language').value);
+      getElement('text-status').textContent = 'Checking local availability…';
+      const sameLanguage = job.kind === 'translate' && job.options.sourceLanguage === job.options.targetLanguage;
+      const status = sameLanguage ? 'unavailable' : await textAvailability(job.kind, job.options);
+      if (textJob !== job || check !== textCheck) return;
+      job.available = status !== 'unavailable';
+      getElement('text-run').disabled = !job.available;
+      getElement('text-run').textContent = status === 'available' ? 'Generate preview' : 'Download & generate preview';
+      getElement('text-status').textContent = !job.available ? 'Not available locally for these languages.'
+        : status === 'available' ? 'Ready. Processing stays on this device.'
+        : 'A local model may need downloading first. Text processing stays on this device.';
+    }
+    function openTextTool(kind) {
+      if (getElement('text-' + kind).hidden || composing || textDialog.open) return;
+      const start = editor.selectionStart;
+      const end = editor.selectionEnd;
+      if (!(start === end ? editor.value : editor.value.slice(start, end)).trim()) { toast('Select or enter some text first.'); return; }
+      stopForEditing('Dictation paused for text editing.');
+      cancelPendingPress();
+      disposeTextJob();
+      textJob = { kind, snapshot: editorSnapshot(), revision: editorRevision, start: start === end ? 0 : start, end: start === end ? editor.value.length : end };
+      textJob.input = editor.value.slice(textJob.start, textJob.end);
+      getElement('text-dialog-title').textContent = textTools[kind].label;
+      getElement('text-scope').textContent = start === end ? 'Entire text · review before replacing' : 'Selected text · review before replacing';
+      getElement('text-original').value = textJob.input;
+      getElement('text-result').value = '';
+      getElement('text-source-language').value = textLanguage;
+      getElement('text-target-language').value = textLanguage === 'en' ? 'de' : 'en';
+      getElement('text-target-field').hidden = kind !== 'translate';
+      getElement('text-source-language').disabled = false;
+      getElement('text-target-language').disabled = false;
+      textDialog.showModal();
+      checkTextOptions();
+    }
+    async function runTextTool() {
+      const job = textJob;
+      if (!job || job.busy || !job.available) return;
+      job.busy = true;
+      job.controller = new AbortController();
+      getElement('text-run').disabled = true;
+      getElement('text-apply').disabled = true;
+      getElement('text-source-language').disabled = true;
+      getElement('text-target-language').disabled = true;
+      getElement('text-status').textContent = 'Preparing local model…';
+      try {
+        // Create directly in the click handler to retain transient user activation.
+        const session = await window[textTools[job.kind].api].create({ ...job.options, signal: job.controller.signal,
+          monitor(monitor) { monitor.addEventListener('downloadprogress', event => {
+            if (textJob === job) getElement('text-status').textContent = `Downloading model: ${Math.round(event.loaded * 100)}%`;
+          }); }
+        });
+        if (textJob !== job) { session.destroy(); return; }
+        job.session = session;
+        getElement('text-status').textContent = 'Processing locally…';
+        const output = await session[textTools[job.kind].method](job.input, { signal: job.controller.signal });
+        if (textJob !== job) return;
+        const result = job.kind === 'fix' ? output.correctedInput : output;
+        if (typeof result !== 'string' || !result.trim()) throw new Error('The browser returned no usable text.');
+        job.result = result;
+        getElement('text-result').value = result;
+        getElement('text-apply').disabled = result === job.input;
+        getElement('text-status').textContent = result === job.input ? 'No changes needed.' : 'Review the result, then Apply or Cancel.';
+      } catch (error) {
+        if (textJob === job) getElement('text-status').textContent = 'Could not process locally. Your text is unchanged. ' + (error.message || 'Please try again.');
+      } finally {
+        try { job.session?.destroy(); } catch {}
+        job.session = null;
+        if (textJob === job) {
+          job.busy = false;
+          getElement('text-run').disabled = false;
+          getElement('text-source-language').disabled = false;
+          getElement('text-target-language').disabled = false;
+        }
+      }
+    }
+    function applyTextResult() {
+      const job = textJob;
+      if (!job || job.busy || typeof job.result !== 'string') return;
+      // Reject stale results even if the user edited and subsequently undid an edit.
+      if (editorRevision !== job.revision || editor.value !== job.snapshot.text) {
+        getElement('text-status').textContent = 'The text changed. Cancel and run the action again; nothing was overwritten.';
+        getElement('text-apply').disabled = true;
+        return;
+      }
+      beforeEdit = job.snapshot;
+      editor.setRangeText(job.result, job.start, job.end, 'select');
+      editor.dispatchEvent(new Event('input', { bubbles: true }));
+      textDialog.close();
+      editor.focus({ preventScroll: true });
+      editor.scrollTop = job.snapshot.top;
+      editor.scrollLeft = job.snapshot.left;
+    }
+    for (const selectId of ['text-source-language', 'text-target-language']) {
+      const select = getElement(selectId);
+      for (const [code, label] of Object.entries({ ...textLanguages, [textLanguage]: textLanguages[textLanguage] || textLanguage })) {
+        select.add(new Option(label, code));
+      }
+      select.addEventListener('change', checkTextOptions);
+    }
+    for (const kind of Object.keys(textTools)) {
+      getElement('text-' + kind).addEventListener('pointerdown', event => event.preventDefault());
+      getElement('text-' + kind).addEventListener('click', () => openTextTool(kind));
+    }
+    getElement('text-run').addEventListener('click', runTextTool);
+    getElement('text-apply').addEventListener('click', applyTextResult);
+    getElement('text-cancel').addEventListener('click', () => textDialog.close());
+    textDialog.addEventListener('close', disposeTextJob);
+    textDialog.addEventListener('cancel', disposeTextJob);
+    refreshTextTools();
 
     try { setArchiveOpen(localStorage.getItem('dictatus_archive_open') !== 'false'); } catch {}
     initializeShortcuts();

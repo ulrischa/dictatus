@@ -1207,3 +1207,118 @@ test('cancelled pending press never starts dictation', async t => {
   assert.equal(await page.evaluate(() => sessions.filter(s => s.onresult).length), 1);
   assert.equal(await page.locator('#status-title').textContent(), 'Paused');
 });
+
+async function enableTextTools(page, status = 'available') {
+  await page.evaluate(async status => {
+    window.toolCalls = [];
+    window.destroyedTools = 0;
+    for (const [apiName, method] of [['Proofreader','proofread'],['Rewriter','rewrite'],['Summarizer','summarize'],['Translator','translate']]) {
+      window[apiName] = {
+        availability: async options => { toolCalls.push({ apiName, phase:'availability', options }); return status; },
+        create: async options => {
+          toolCalls.push({apiName, phase:'create', options: { ...options, signal: undefined, monitor: undefined }});
+          return { destroy() { destroyedTools++; }, async [method](input) {
+            toolCalls.push({apiName, phase:'run', input});
+            if (window.delayTextResult) return new Promise(resolve => { window.resolveTextResult = resolve; });
+            return apiName === 'Proofreader' ? {correctedInput:'Fixed text'} : apiName + ' result';
+          }};
+        }
+      };
+    }
+    await refreshTextTools();
+  }, status);
+}
+
+test('text actions stay hidden when APIs are absent or unavailable', async t => {
+  const page = await setup(t);
+  assert.equal(await page.locator('#text-tools').isVisible(), false);
+  await enableTextTools(page, 'unavailable');
+  assert.equal(await page.locator('#text-tools').isVisible(), false);
+  await enableTextTools(page);
+  assert.equal(await page.locator('#text-tools button:visible').count(), 4);
+  assert.equal(await page.evaluate(() => toolCalls.some(c => c.phase === 'create')), false);
+});
+
+test('Fix text previews selection, pauses speech and applies one undoable change', async t => {
+  const page = await setup(t, 'Before wrong after', 7);
+  await enableTextTools(page);
+  await page.locator('#editor').evaluate(e => e.setSelectionRange(7,12));
+  await page.locator('#text-fix').click();
+  assert.equal(await page.locator('#status-title').textContent(), 'Paused');
+  assert.equal(await page.locator('#text-original').inputValue(), 'wrong');
+  await page.locator('#text-run').click();
+  await page.locator('#text-apply').waitFor({state:'visible'});
+  await page.waitForFunction(() => !document.getElementById('text-apply').disabled);
+  assert.equal(await value(page), 'Before wrong after');
+  await page.locator('#text-apply').click();
+  assert.equal(await value(page), 'Before Fixed text after');
+  await page.keyboard.press('Control+z');
+  assert.equal(await value(page), 'Before wrong after');
+});
+
+test('all four APIs receive language options and return safe plain-text previews', async t => {
+  const page = await setup(t, 'Some text', 0);
+  await enableTextTools(page);
+  for (const [kind, api] of [['fix','Proofreader'],['rewrite','Rewriter'],['summarize','Summarizer'],['translate','Translator']]) {
+    await page.locator('#text-' + kind).click();
+    if (kind === 'translate') await page.locator('#text-target-language').selectOption('fr');
+    await page.locator('#text-run').click();
+    await page.waitForFunction(() => !document.getElementById('text-apply').disabled);
+    assert.equal(await page.locator('#text-result').inputValue(), kind === 'fix' ? 'Fixed text' : api + ' result');
+    const options = await page.evaluate(api => toolCalls.find(c => c.apiName === api && c.phase === 'create').options, api);
+    assert.equal(kind === 'translate' ? options.targetLanguage : options.expectedInputLanguages[0], kind === 'translate' ? 'fr' : 'en');
+    await page.locator('#text-cancel').click();
+    assert.equal(await value(page), 'Some text');
+  }
+});
+
+test('cancel rejects late results and cleans up the model session', async t => {
+  const page = await setup(t, 'Original', 0);
+  await enableTextTools(page);
+  await page.evaluate(() => { window.delayTextResult = true; });
+  await page.locator('#text-rewrite').click();
+  await page.locator('#text-run').click();
+  await page.waitForFunction(() => !!window.resolveTextResult);
+  await page.keyboard.press('Escape');
+  await page.evaluate(() => resolveTextResult('Stale result'));
+  assert.equal(await value(page), 'Original');
+  assert.equal(await page.locator('#text-dialog').isVisible(), false);
+  assert.ok(await page.evaluate(() => destroyedTools > 0));
+});
+
+test('Apply rejects changes to the underlying editor made while processing', async t => {
+  const page = await setup(t, 'Original', 0);
+  await enableTextTools(page);
+  await page.locator('#text-fix').click();
+  await page.locator('#text-run').click();
+  await page.waitForFunction(() => !document.getElementById('text-apply').disabled);
+  await page.locator('#editor').evaluate(e => { e.value = 'My edit'; e.dispatchEvent(new Event('input', {bubbles:true})); });
+  await page.locator('#text-apply').click();
+  assert.equal(await value(page), 'My edit');
+  assert.match(await page.locator('#text-status').textContent(), /nothing was overwritten/);
+});
+
+test('downloadable models require an explicit click and failed processing keeps the original', async t => {
+  const page = await setup(t, 'Original', 0);
+  await enableTextTools(page, 'downloadable');
+  await page.locator('#text-summarize').click();
+  await page.waitForFunction(() => !document.getElementById('text-run').disabled);
+  assert.match(await page.locator('#text-run').textContent(), /Download/);
+  assert.equal(await page.evaluate(() => toolCalls.filter(c => c.phase === 'create').length), 0);
+  await page.evaluate(() => { Summarizer.create = async () => { throw new Error('Model download failed'); }; });
+  await page.locator('#text-run').click();
+  await page.waitForFunction(() => document.getElementById('text-status').textContent.includes('Model download failed'));
+  assert.equal(await value(page), 'Original');
+  assert.equal(await page.locator('#text-apply').isDisabled(), true);
+});
+
+test('unavailable translation pairs disable generation and mobile dialog fits viewport', async t => {
+  const page = await setup(t, 'Original', 0, {viewport:{width:320,height:720}});
+  await enableTextTools(page);
+  await page.locator('#text-translate').click();
+  await page.locator('#text-target-language').selectOption('en');
+  assert.equal(await page.locator('#text-run').isDisabled(), true);
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  const box = await page.locator('#text-dialog').boundingBox();
+  assert.ok(box.width <= 320 && box.height <= 720);
+});
