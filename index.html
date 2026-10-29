@@ -63,8 +63,8 @@
     .speech-info > div { flex: 1 1 180px; min-width: 0; }
     .status-caption { font-size: .78rem; color: var(--muted); margin: 2px 0 0 18px; max-width: 670px; overflow-wrap: anywhere; }
     .dot { width: 9px; height: 9px; flex: 0 0 9px; border-radius: 50%; background: #a2aec1; }
-    .dot.live { background: #d42e48; box-shadow: 0 0 0 5px rgba(212,46,72,.11); animation: pulse 1.3s infinite; }
-    @keyframes pulse { 50% { box-shadow: 0 0 0 9px rgba(212,46,72,0); } }
+    .dot.live { background: #137353; box-shadow: 0 0 0 5px rgba(19,115,83,.11); animation: pulse 1.3s infinite; }
+    @keyframes pulse { 50% { box-shadow: 0 0 0 9px rgba(19,115,83,0); } }
     .mode-badge { padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px; flex-shrink: 0; font-size: .74rem; font-weight: 650; color: #4f607d; background: #f9fafc; }
     .mode-badge.offline { color: #086946; background: #e8f8f1; border-color: #ade6cc; }
     .mode-badge.browser { color: #7b5620; background: #fff8e8; border-color: #e6d9ac; }
@@ -83,8 +83,6 @@
     .editor-footer { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin: 8px 0 16px; color: var(--muted); font-size: .78rem; }
     .save-line { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; margin: 0 0 16px; }
     #note-title { flex: 1 1 190px; min-width: 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; color: var(--text); }
-    .autosave { color: #137353; font-size: .76rem; font-weight: 650; white-space: nowrap; }
-    .autosave.error { color: var(--red); }
     #keyboard-shortcuts { margin-top: 14px; font-size: .82rem; }
     #keyboard-shortcuts summary { cursor: pointer; font-weight: 650; }
     #keyboard-shortcuts table { width: 100%; border-collapse: collapse; margin-top: 10px; }
@@ -232,7 +230,6 @@
         <div class="save-line">
           <label class="sr-only" for="note-title">Optional title</label>
           <input id="note-title" type="text" maxlength="160" placeholder="Title (optional)" autocomplete="off">
-          <span class="autosave" id="autosave-indicator">● Autosave on</span>
         </div>
         <div class="bottom-actions">
           <button class="button" type="button" id="copy-button"><span aria-hidden="true">⧉</span> Copy</button>
@@ -699,13 +696,9 @@
         localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
         storageAvailable = true;
         getElement('save-state').textContent = 'Saved locally';
-        getElement('autosave-indicator').textContent = '● Autosave on';
-        getElement('autosave-indicator').classList.remove('error');
       } catch (error) {
         storageAvailable = false;
         getElement('save-state').textContent = 'Save failed';
-        getElement('autosave-indicator').textContent = '⚠ Storage unavailable';
-        getElement('autosave-indicator').classList.add('error');
         console.warn('Could not write local storage:', error);
       }
     }
