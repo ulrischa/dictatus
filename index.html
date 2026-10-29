@@ -34,7 +34,9 @@
     .page { max-width: 1180px; margin: auto; padding: 28px 22px 50px; }
     .page-header { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 20px; }
     h1 { font-size: clamp(1.7rem, 4vw, 2.3rem); letter-spacing: -.045em; margin: 0; line-height: 1.2; font-family: Georgia, serif; }
-    .header-actions { display: flex; flex-direction: column; gap: 6px; }
+    .brand { flex: 0 1 240px; min-width: 0; line-height: 0; }
+    .brand img { display: block; width: 100%; height: auto; }
+    .header-actions { flex-shrink: 0; display: flex; flex-direction: column; gap: 6px; }
     .layout.archive-collapsed { grid-template-columns: minmax(0, 1fr); }
     #archive-panel[hidden] { display: none; }
     .layout { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 19px; align-items: start; }
@@ -157,7 +159,7 @@
 <body>
   <main class="page">
     <header class="page-header">
-      <h1>👩‍🏫 Dictatus</h1>
+      <h1 class="brand"><img src="./assets/dictatus-logo.png" alt="Dictatus" width="2048" height="682"></h1>
       <div class="header-actions">
         <button type="button" class="button" id="new-button">＋ New</button>
         <button type="button" class="button" id="archive-toggle" aria-expanded="true" aria-controls="archive-panel">Hide archive</button>

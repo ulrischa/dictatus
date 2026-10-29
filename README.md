@@ -1,4 +1,4 @@
-# 👩‍🏫 Dictatus
+<h1><img src="assets/dictatus-logo.png" alt="Dictatus" width="360"></h1>
 
 A lightweight, installable, offline-first dictation and Markdown editor. Plain HTML, CSS and JavaScript. No dependencies, build tooling, accounts, or backend are required.
 
