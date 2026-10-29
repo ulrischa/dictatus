@@ -23,6 +23,8 @@
       --primary-hover: #23465d;
       --soft: #f6f0e4;
       --red: #b42e43;
+      --recording-edge-gap: .5rem;
+      --recording-button-height: 4rem;
       --shadow: 0 12px 36px rgba(25,48,89,.055);
     }
     * { box-sizing: border-box; }
@@ -30,7 +32,7 @@
     button, input, textarea, select { font: inherit; }
     select { color: var(--text); }
     button { cursor: pointer; }
-    .panel :where(input, select, textarea, summary) { scroll-margin-top: 88px; }
+    .panel :where(input, select, textarea, summary) { scroll-margin-top: calc(var(--visible-top, 0px) + var(--recording-controls-height, var(--recording-button-height)) + 2 * var(--recording-edge-gap)); }
     button:disabled { cursor: not-allowed; opacity: .5; }
     :where(button, input, textarea, select, summary):focus-visible { outline: 3px solid #8a6527; outline-offset: 2px; }
     .page { max-width: 1180px; margin: auto; padding: 28px 22px 50px; }
@@ -50,8 +52,8 @@
     .button.primary:hover:not(:disabled) { background: var(--primary-hover); }
     .button.recording { background: var(--red); border-color: var(--red); color: #fff; }
     .button.recording:hover:not(:disabled) { background: #942339; }
-    .recording-controls { position: sticky; top: 8px; z-index: 2; display: grid; grid-template-columns: 1fr; background: white; }
-    .recording-controls .button { height: 64px; padding: 8px; font-size: .9rem; line-height: 1.3; }
+    .recording-controls { position: sticky; top: calc(var(--recording-edge-gap) + var(--visible-top, 0px)); z-index: 2; display: grid; grid-template-columns: 1fr; background: white; }
+    .recording-controls .button { min-height: var(--recording-button-height); height: auto; padding: 8px; font-size: .9rem; line-height: 1.3; }
     #record-button { touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; font-size: .9rem; }
     .dot[data-phase="connecting"], .dot[data-phase="finishing"] { background: #b47a15; }
     .dot[data-phase="error"] { background: #b5263e; }
@@ -351,6 +353,34 @@
     const titleInput = getElement('note-title');
     const recordButton = getElement('record-button');
     const modeBadge = getElement('mode-badge');
+    const recordingControls = recordButton.closest('.recording-controls');
+    const updateRecordingHeight = () => {
+      document.documentElement.style.setProperty('--recording-controls-height', `${recordingControls.getBoundingClientRect().height}px`);
+    };
+    if (window.ResizeObserver) {
+      new ResizeObserver(updateRecordingHeight).observe(recordingControls);
+    } else {
+      window.addEventListener('resize', updateRecordingHeight, { passive: true });
+    }
+    updateRecordingHeight();
+    // The keyboard can pan the visual viewport without scrolling the layout viewport.
+    // Keep sticky controls inside the visible area without moving focus or page scroll.
+    if (window.visualViewport) {
+      let viewportFrame = null;
+      const updateVisibleTop = () => {
+        viewportFrame = null;
+        const offset = window.visualViewport.offsetTop;
+        document.documentElement.style.setProperty('--visible-top', `${Number.isFinite(offset) ? Math.max(0, offset) : 0}px`);
+      };
+      const scheduleVisibleTop = () => {
+        if (viewportFrame === null) viewportFrame = requestAnimationFrame(updateVisibleTop);
+      };
+      window.visualViewport.addEventListener('scroll', scheduleVisibleTop, { passive: true });
+      window.visualViewport.addEventListener('resize', scheduleVisibleTop, { passive: true });
+      window.addEventListener('pageshow', scheduleVisibleTop);
+      updateVisibleTop();
+    }
+
     const androidRecognition = navigator.userAgentData?.platform === 'Android' || /Android/i.test(navigator.userAgent) || (/Linux/i.test(navigator.platform) && navigator.maxTouchPoints > 0);
     const browserLanguage = navigator.language || navigator.languages?.[0] || 'en-US';
     let languagePreference = 'auto';

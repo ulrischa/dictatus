@@ -1428,3 +1428,39 @@ test('punctuation settings save on change without a Save button', async t => {
   assert.equal(await page.locator('#command-mode').inputValue(), 'simple');
   assert.equal(await page.locator('#auto-punctuation').isChecked(), true);
 });
+
+test('recording control follows visual viewport panning without touching editor state', async t => {
+  const page = await setup(t, 'Keep this text', 5);
+  await page.locator('#editor').focus();
+  await page.locator('#editor').evaluate(e => e.setSelectionRange(2,5));
+  await page.evaluate(() => scrollTo(0,200));
+  const before = await page.evaluate(() => ({text:editor.value,start:editor.selectionStart,end:editor.selectionEnd,focus:document.activeElement.id,scroll:scrollY}));
+  const gap = await page.locator('.recording-controls').evaluate(e => parseFloat(getComputedStyle(e).top));
+  for (const offset of [120, 240.5, -20, 0]) {
+    await page.evaluate(offset => {
+      Object.defineProperty(visualViewport, 'offsetTop', {configurable:true,value:offset});
+      visualViewport.dispatchEvent(new Event('resize'));
+      visualViewport.dispatchEvent(new Event('scroll'));
+    }, offset);
+    await page.waitForFunction(({offset,gap}) => parseFloat(getComputedStyle(document.querySelector('.recording-controls')).top) === Math.max(0,offset)+gap, {offset,gap});
+    const top = await page.locator('.recording-controls').evaluate(e=>e.getBoundingClientRect().top);
+    assert.ok(Math.abs(top-(Math.max(0,offset)+gap)) < 1);
+    assert.deepEqual(await page.evaluate(() => ({text:editor.value,start:editor.selectionStart,end:editor.selectionEnd,focus:document.activeElement.id,scroll:scrollY})),before);
+  }
+});
+
+
+test('recording clearance follows actual control height and design spacing', async t => {
+  const page = await setup(t);
+  await page.evaluate(() => {
+    document.documentElement.style.setProperty('--recording-edge-gap', '17px');
+    document.getElementById('record-button').style.minHeight = '110px';
+  });
+  await page.waitForFunction(() => {
+    const controls = document.querySelector('.recording-controls');
+    const height = controls.getBoundingClientRect().height;
+    const gap = parseFloat(getComputedStyle(controls).top);
+    return parseFloat(getComputedStyle(editor).scrollMarginTop) === height + 2 * gap;
+  });
+  assert.equal(await page.locator('.recording-controls').evaluate(e => getComputedStyle(e).top), '17px');
+});
