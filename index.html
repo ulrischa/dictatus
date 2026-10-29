@@ -230,11 +230,11 @@
         <div class="save-line">
           <label class="sr-only" for="note-title">Optional title</label>
           <input id="note-title" type="text" maxlength="160" placeholder="Title (optional)" autocomplete="off">
-        </div>
-        <div class="bottom-actions">
-          <button class="button" type="button" id="copy-button"><span aria-hidden="true">⧉</span> Copy</button>
-          <button class="button" type="button" id="share-button"><span aria-hidden="true">↗</span> Share</button>
-          <button class="button" type="button" id="markdown-export-button"><span aria-hidden="true">↓</span> Download</button>
+          <div class="bottom-actions">
+            <button class="button" type="button" id="copy-button"><span aria-hidden="true">⧉</span> Copy</button>
+            <button class="button" type="button" id="share-button"><span aria-hidden="true">↗</span> Share</button>
+            <button class="button" type="button" id="markdown-export-button"><span aria-hidden="true">↓</span> Download</button>
+          </div>
         </div>
         <details id="speech-settings">
           <summary id="settings-toggle">Words &amp; dictation settings</summary>
@@ -1429,7 +1429,13 @@
     }
 
     function safeFilename(value) {
-      return (value || 'Dictatus').replace(/[\\/:*?"<>|\x00-\x1f]/g, '-').trim().slice(0, 70) || 'Dictatus';
+      // Keep downloads portable across file systems, including Windows device names.
+      const maxStemLength = 48;
+      let stem = (value || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-zA-Z0-9_-]+/g, '-')
+        .replace(/-+/g, '-').replace(/^[-_]+|[-_]+$/g, '');
+      if (/^(con|prn|aux|nul|com[0-9]|lpt[0-9])$/i.test(stem)) stem = `Dictatus-${stem}`;
+      return stem.slice(0, maxStemLength).replace(/[-_]+$/g, '') || 'Dictatus';
     }
 
     function exportMarkdown() {

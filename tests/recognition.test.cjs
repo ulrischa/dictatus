@@ -764,8 +764,8 @@ test('title blur saves a new note and later renames it without a Save button', a
   await page.locator('#editor').focus();
   await page.reload();
   assert.equal(await page.locator('#note-title').inputValue(), '');
-  assert.equal(await page.locator('#copy-button').textContent(), 'Copy');
-  assert.equal(await page.locator('#markdown-export-button').textContent(), 'Download');
+  await page.getByRole('button', { name: 'Copy', exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Download', exact: true }).waitFor();
 });
 
 test('empty title blur creates no empty note and default capabilities remain silent', async t => {
@@ -1463,4 +1463,25 @@ test('recording clearance follows actual control height and design spacing', asy
     return parseFloat(getComputedStyle(editor).scrollMarginTop) === height + 2 * gap;
   });
   assert.equal(await page.locator('.recording-controls').evaluate(e => getComputedStyle(e).top), '17px');
+});
+
+
+test('title input saves with confirmation before leaving the field', async t => {
+  const page = await setup(t);
+  await page.locator('#note-title').fill('A new title');
+  await page.waitForFunction(() => document.getElementById('save-state').textContent === 'Saved locally');
+  assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('dictatus_v1')).draft.title), 'A new title');
+  assert.equal(await page.evaluate(() => document.activeElement.id), 'note-title');
+});
+
+test('Markdown downloads use short portable names even without a title', async t => {
+  const page = await setup(t, 'A very long text / with : unsafe ? characters '.repeat(10), 0);
+  const pending = page.waitForEvent('download');
+  await page.locator('#markdown-export-button').click();
+  const download = await pending;
+  assert.match(download.suggestedFilename(), /^[a-zA-Z0-9_-]{1,48}\.md$/);
+  assert.equal(fs.readFileSync(await download.path(), 'utf8'), await value(page));
+  for (const [input, expected] of [['CON', 'Dictatus-CON'], ['.. / : ? <>', 'Dictatus'], ['Grüße München', 'Gru-e-Munchen'], ['LPT1', 'Dictatus-LPT1']]) {
+    assert.equal(await page.evaluate(input => safeFilename(input), input), expected);
+  }
 });
