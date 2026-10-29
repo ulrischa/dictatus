@@ -182,7 +182,7 @@
         </div>
 
         <div id="online-consent" hidden>
-          <p>Local recognition is unavailable. Online mode allows your browser to send audio to its speech service. This permission lasts until you reload this page.</p>
+          <p>Local recognition is unavailable. Online mode allows your browser to send audio to its speech service. Your choice is saved in this browser. You can revoke it in Words &amp; dictation settings.</p>
           <button type="button" class="button" id="allow-online">Allow online mode</button>
         </div>
 
@@ -224,6 +224,8 @@
         </div>
         <details id="speech-settings">
           <summary id="settings-toggle">Words &amp; dictation settings</summary>
+          <label class="check-label"><input type="checkbox" id="online-allowed"> Allow online speech recognition</label>
+          <p class="settings-help">Saved immediately in this browser. When enabled, dictation uses the browser service, which may send audio online. Turn off to require local recognition.</p>
           <div class="settings-section">
             <h3>Speak punctuation</h3>
             <label for="command-mode">How would you like to say it?</label>
@@ -343,7 +345,10 @@
     let finishTimer = null;
     let speechError = '';
     let speechMode = 'none';
+    const ONLINE_CONSENT_KEY = 'dictatus_online_allowed';
     let forceBrowserService = false;
+    try { forceBrowserService = localStorage.getItem(ONLINE_CONSENT_KEY) === 'true'; } catch {}
+    getElement('online-allowed').checked = forceBrowserService;
     let recognitionToken = 0;
     let processedFinals = new Set();
     let listeningDetail = '';
@@ -1626,9 +1631,20 @@
       cancelPendingPress();
       if (holdSource || finishing) stopForEditing('Hold ended because the window lost focus. Visible text kept.');
     });
+    function saveOnlinePermission(allowed) {
+      forceBrowserService = allowed;
+      getElement('online-allowed').checked = allowed;
+      try { localStorage.setItem(ONLINE_CONSENT_KEY, String(allowed)); }
+      catch { toast('This choice could not be saved. It applies only to this open page.'); }
+    }
+    getElement('online-allowed').addEventListener('change', event => {
+      stopForEditing('Recognition preference changed. Start dictation when ready.');
+      saveOnlinePermission(event.target.checked);
+      getElement('online-consent').hidden = true;
+    });
     getElement('allow-online').addEventListener('click', () => {
       if (getElement('online-consent').hidden) return;
-      forceBrowserService = true;
+      saveOnlinePermission(true);
       getElement('online-consent').hidden = true;
       setMode('none');
       setSpeechStatus('Ready for online dictation', 'Tap or hold the dictation button. Audio may be sent to the browser’s speech service.');

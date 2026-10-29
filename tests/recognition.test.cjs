@@ -812,8 +812,6 @@ test('selected misspelling opens a correction form and persists a future dictati
   await page.reload();
   await page.locator('#editor').evaluate(e => e.setSelectionRange(e.value.length, e.value.length));
   await page.locator('#record-button').click();
-  await page.locator('#allow-online').click();
-  await page.locator('#record-button').click();
   await emit(page, [['keen wah', true]]);
   assert.equal(await value(page), 'keen wah quinoa');
 });
@@ -862,8 +860,6 @@ test('case-only schubidam correction applies immediately and after reload', asyn
   assert.equal(await value(page), 'schubidam Schubidam');
   await page.reload();
   await page.locator('#editor').evaluate(e => e.setSelectionRange(e.value.length, e.value.length));
-  await page.locator('#record-button').click();
-  await page.locator('#allow-online').click();
   await page.locator('#record-button').click();
   await emit(page, [['schubidam', true]]);
   assert.equal(await value(page), 'schubidam Schubidam Schubidam');
@@ -1127,6 +1123,7 @@ test('permission failure clears hold state and never restarts on key release', a
 
 test('initial mode is neutral and unavailable local speech requires explicit online consent', async t => {
   const page = await setup(t);
+  await page.evaluate(() => localStorage.removeItem('dictatus_online_allowed'));
   await page.reload();
   assert.equal(await page.locator('#mode-badge').textContent(), 'Not started');
   await page.locator('#record-button').click();
@@ -1321,4 +1318,22 @@ test('unavailable translation pairs disable generation and mobile dialog fits vi
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
   const box = await page.locator('#text-dialog').boundingBox();
   assert.ok(box.width <= 320 && box.height <= 720);
+});
+
+
+test('online consent persists across reloads and can be revoked immediately', async t => {
+  const page = await setup(t);
+  await page.reload();
+  assert.equal(await page.locator('#mode-badge').textContent(), 'Not started');
+  await page.locator('#record-button').click();
+  assert.equal(await page.locator('#mode-badge').textContent(), 'Online');
+  assert.equal(await page.locator('#online-consent').isVisible(), false);
+  await page.locator('#settings-toggle').click();
+  assert.equal(await page.locator('#online-allowed').isChecked(), true);
+  await page.locator('#online-allowed').uncheck();
+  assert.equal(await page.locator('#status-title').textContent(), 'Paused');
+  await page.reload();
+  await page.locator('#record-button').click();
+  await page.locator('#online-consent').waitFor({state:'visible'});
+  assert.equal(await page.evaluate(() => sessions.filter(s => s.onresult).length), 0);
 });
