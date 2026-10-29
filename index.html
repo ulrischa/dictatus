@@ -45,7 +45,12 @@
     .button.primary:hover:not(:disabled) { background: var(--primary-hover); }
     .button.recording { background: var(--red); border-color: var(--red); color: #fff; }
     .button.recording:hover:not(:disabled) { background: #942339; }
-    .button-wide { position: sticky; top: 8px; z-index: 2; width: 100%; min-height: 60px; font-size: 1rem; border-radius: 8px; letter-spacing: .01em; }
+    .recording-controls { position: sticky; top: 8px; z-index: 2; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; background: white; }
+    .recording-controls .button { height: 64px; padding: 8px; font-size: .9rem; line-height: 1.3; }
+    #hold-button { touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; font-size: .9rem; }
+    .dot[data-phase="connecting"], .dot[data-phase="finishing"] { background: #b47a15; }
+    .dot[data-phase="error"] { background: #b5263e; }
+    .button-wide { width: 100%; min-height: 60px; font-size: 1rem; border-radius: 8px; letter-spacing: .01em; }
     .speech-info { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; padding: 12px 1px 13px; }
     .status-title { display: flex; align-items: center; gap: 9px; font-size: .85rem; font-weight: 650; }
     .status-caption { font-size: .78rem; color: var(--muted); margin: 2px 0 0 18px; max-width: min(68vw, 670px); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
@@ -149,8 +154,11 @@
 
     <div class="layout">
       <section class="panel" aria-label="Dictation editor">
+        <div class="recording-controls">
         <button type="button" id="record-button" aria-keyshortcuts="Control+Shift+Space Meta+Shift+Space" class="button primary button-wide" aria-pressed="false">● Start dictation</button>
-        <p class="quick-help">Ctrl/Cmd + Shift + Space: pause / resume. While on, dictation continues at your cursor after typing or editing.</p>
+        <button type="button" id="hold-button" class="button" aria-keyshortcuts="Alt+Shift+Space" aria-pressed="false" title="Hold to talk (Alt + Shift + Space)">Hold to talk</button>
+        </div>
+        <p class="quick-help">Ctrl/Cmd + Shift + Space: start / pause. Hold Alt + Shift + Space to talk; release to finish.</p>
         <div class="speech-info" role="status" aria-live="polite">
           <div>
             <div class="status-title"><span class="dot" id="status-dot"></span><span id="status-title">Ready to dictate</span></div>
@@ -295,6 +303,10 @@
     let recognition = null;
     let speechWanted = false;
     let speechActive = false;
+    let holdSource = null;
+    let holdPointerId = null;
+    let finishing = false;
+    let finishTimer = null;
     let speechError = '';
     let speechMode = 'none';
     let forceBrowserService = false;
@@ -766,9 +778,11 @@
       toast('Note deleted.');
     }
 
-    function setSpeechStatus(title, detail) {
+    function setSpeechStatus(title, detail, phase = 'idle') {
       getElement('status-title').textContent = title;
       getElement('status-help').textContent = detail;
+      getElement('status-dot').dataset.phase = phase;
+      getElement('status-dot').classList.toggle('live', phase === 'listening');
     }
 
     function setMode(mode) {
@@ -784,7 +798,12 @@
       recordButton.classList.toggle('recording', speechWanted);
       recordButton.classList.toggle('primary', !speechWanted);
       recordButton.setAttribute('aria-pressed', String(speechWanted));
-      getElement('status-dot').classList.toggle('live', speechActive);
+      recordButton.disabled = !SpeechRecognitionClass || !!holdSource || finishing;
+      const holdButton = getElement('hold-button');
+      holdButton.disabled = !SpeechRecognitionClass || finishing || (speechWanted && !holdSource);
+      holdButton.textContent = finishing ? 'Finishing…' : holdSource ? 'Release to finish' : 'Hold to talk';
+      holdButton.setAttribute('aria-pressed', String(!!holdSource));
+      holdButton.classList.toggle('recording', !!holdSource);
       getElement('new-button').disabled = speechWanted || speechActive || !!recognition;
       getElement('import-button').disabled = speechWanted || speechActive || !!recognition;
       if (!SpeechRecognitionClass) recordButton.disabled = true;
@@ -820,6 +839,10 @@
     }
 
     function stopForEditing(message = 'Dictation stopped to protect your edit.') {
+      holdSource = null;
+      holdPointerId = null;
+      finishing = false;
+      clearTimeout(finishTimer);
       paused = speechWanted || !!recognition || paused;
       speechWanted = false;
       speechActive = false;
@@ -833,7 +856,7 @@
       speechUndoOpen = false;
       if (previous) { try { previous.abort(); } catch {} }
       updateRecordingUI();
-      setSpeechStatus('Paused', message);
+      setSpeechStatus('Paused', message, 'paused');
     }
 
     function restoreHistory(redo = false) {
@@ -941,6 +964,7 @@
     }
 
     function redirectDictationToCaret() {
+      if (finishing) { stopForEditing('Text kept. Ready for your next dictation.'); return; }
       if (!speechWanted || !dictationRange || composing || editor.value !== editorText ||
           editor.selectionStart !== editor.selectionEnd || editor.selectionEnd === dictationRange.end) return;
       speechUndoOpen = false;
@@ -948,6 +972,7 @@
     }
 
     function continueAfterEdit() {
+      if (finishing) { stopForEditing('Your edit is kept. Ready for your next dictation.'); return; }
       if (!speechWanted) return;
       // Each edit or deliberate caret move starts a fresh session. Keep visible words, but
       // invalidate the old handlers before aborting so late results cannot overwrite them.
@@ -961,12 +986,12 @@
       speechActive = false;
       if (previous) { try { previous.abort(); } catch {} }
       updateRecordingUI();
-      setSpeechStatus(composing ? 'Editing…' : 'Reconnecting…', 'Dictation stays on and continues at the cursor after your edit.');
+      setSpeechStatus(composing ? 'Editing…' : 'Connecting…', 'Wait for Listening before speaking again.', composing ? 'editing' : 'connecting');
       // Debounce keystrokes and wait for IME commit; never interrupt composition.
       if (!composing) restartTimer = setTimeout(startRecognition, 250);
     }
 
-    async function selectRecognitionMode() {
+    async function selectRecognitionMode(token) {
       if (forceBrowserService) return 'browser';
       if (typeof SpeechRecognitionClass?.available !== 'function' ||
           typeof SpeechRecognitionClass?.install !== 'function') return 'browser';
@@ -975,9 +1000,10 @@
       const options = { langs: [speechLanguage], processLocally: true };
       try {
         let availability = await SpeechRecognitionClass.available(options);
+        if (!speechWanted || token !== recognitionToken) return 'browser';
         if (availability === 'available') return 'offline';
         if (availability === 'downloadable' || availability === 'downloading') {
-          setSpeechStatus('Preparing offline recognition…', `Checking ${speechLanguage} language pack.`);
+          setSpeechStatus('Connecting…', `Checking ${speechLanguage} language pack. Not listening yet.`, 'connecting');
           const installed = await SpeechRecognitionClass.install(options);
           if (installed) {
             availability = await SpeechRecognitionClass.available(options);
@@ -995,8 +1021,8 @@
       if (!speechWanted || composing || !SpeechRecognitionClass || recognition) return;
       const token = ++recognitionToken;
       setMode('checking');
-      setSpeechStatus('Preparing recognition…', `Language: ${speechLanguage}`);
-      const mode = await selectRecognitionMode();
+      setSpeechStatus('Connecting…', `Not listening yet · ${speechLanguage}`, 'connecting');
+      const mode = await selectRecognitionMode(token);
       if (!speechWanted || token !== recognitionToken) return;
       setMode(mode);
       processedFinals = new Set();
@@ -1015,10 +1041,16 @@
 
       instance.onstart = () => {
         if (recognition !== instance) return;
+        if (finishing) return;
         speechActive = true;
         updateRecordingUI();
         listeningDetail = mode === 'offline' ? `On-device · ${speechLanguage}` : `Browser recognition · ${speechLanguage}`;
-        setSpeechStatus('Listening…', listeningDetail);
+        setSpeechStatus('Listening', (holdSource ? 'Release to finish · ' : 'Speak or edit · ') + listeningDetail, 'listening');
+      };
+      instance.onaudioend = () => {
+        if (recognition !== instance) return;
+        speechActive = false;
+        if (!finishing) setSpeechStatus('Processing…', 'Finishing this phrase. Wait for Listening before speaking.', 'finishing');
       };
       instance.onresult = (event) => {
         if (recognition !== instance || !dictationRange || terminalResultReceived) return;
@@ -1048,6 +1080,11 @@
       instance.onerror = (event) => {
         if (recognition !== instance) return;
         speechError = event.error || 'unknown';
+        if (finishing) {
+          stopForEditing('Visible text kept.');
+          setSpeechStatus('Could not finish', 'The browser did not finish recognition. Check the visible text.', 'error');
+          return;
+        }
         if (speechError === 'phrases-not-supported' && !disableHints) {
           disableHints = true;
           getElement('speech-capabilities').textContent = 'Word hints rejected by this service. Retrying without hints; local corrections remain active.';
@@ -1056,7 +1093,7 @@
         }
         if (mode === 'offline' && ['language-not-supported', 'service-not-allowed', 'network'].includes(speechError)) {
           forceBrowserService = true;
-          setSpeechStatus('Offline language unavailable', 'Switching to browser recognition…');
+          setSpeechStatus('Connecting…', 'Switching to browser recognition. Not listening yet.', 'connecting');
           return;
         }
         const messages = {
@@ -1068,9 +1105,12 @@
           'no-speech': 'No speech detected. Reconnecting…',
           'aborted': 'Recognition stopped.'
         };
-        setSpeechStatus('Recognition interrupted', messages[speechError] || `Recognition error: ${speechError}`);
+        setSpeechStatus('Recognition interrupted', messages[speechError] || `Recognition error: ${speechError}`, 'error');
         if (speechError !== 'no-speech' && speechError !== 'aborted') {
           speechWanted = false;
+          holdSource = null;
+          holdPointerId = null;
+          speechActive = false;
           setMode('none');
         }
         updateRecordingUI();
@@ -1079,16 +1119,18 @@
         if (recognition !== instance) return;
         if (composing) { deferredEnd = () => instance.onend(); return; }
         finishSpeechSegment();
+        finishing = false;
+        clearTimeout(finishTimer);
         recognition = null;
         speechActive = false;
         if (editor.value.trim()) saveCurrent(false);
         updateRecordingUI();
         if (!speechWanted) dictationRange = null;
         if (speechWanted) {
-          setSpeechStatus('Reconnecting…', 'The browser ended this recognition session.');
+          setSpeechStatus('Connecting…', 'Reconnecting. Wait for Listening before speaking.', 'connecting');
           restartTimer = setTimeout(startRecognition, 250);
         } else if (!speechError || speechError === 'aborted') {
-          setSpeechStatus('Dictation stopped', 'Ready to edit, copy or share.');
+          setSpeechStatus('Paused', 'Text kept. Ready for your next dictation.', 'paused');
         }
       };
       try {
@@ -1102,10 +1144,47 @@
           return;
         }
         speechWanted = false;
+        holdSource = null;
+        holdPointerId = null;
         updateRecordingUI();
-        setSpeechStatus('Could not start dictation', 'Check your browser and microphone permissions.');
+        setSpeechStatus('Could not start dictation', 'Check your browser and microphone permissions.', 'error');
         console.warn('Recognition could not start:', error);
       }
+    }
+
+    function beginHold(source) {
+      if (!SpeechRecognitionClass || composing || speechWanted || recognition || finishing || holdSource) return false;
+      holdSource = source;
+      toggleRecording();
+      return holdSource === source;
+    }
+
+    function endHold(source) {
+      if (!holdSource || (source && holdSource !== source)) return;
+      holdSource = null;
+      holdPointerId = null;
+      speechWanted = false;
+      speechActive = false;
+      paused = true;
+      ++recognitionToken;
+      clearTimeout(restartTimer);
+      if (!recognition) {
+        finishSpeechSegment();
+        dictationRange = null;
+        updateRecordingUI();
+        setSpeechStatus('Paused', 'Not listening. Ready for your next dictation.', 'paused');
+        return;
+      }
+      // stop() lets the engine finish captured audio; editing still invalidates late results.
+      finishing = true;
+      updateRecordingUI();
+      setSpeechStatus('Finishing…', 'Microphone stopping. Waiting for the last words.', 'finishing');
+      finishTimer = setTimeout(() => {
+        if (!finishing) return;
+        stopForEditing('Visible text kept; the last words may be incomplete.');
+        setSpeechStatus('Could not finish', 'Recognition timed out. Check the last words.', 'error');
+      }, 5000);
+      try { recognition.stop(); } catch { stopForEditing('Visible text kept. Ready for your next dictation.'); }
     }
 
     function toggleRecording() {
@@ -1119,7 +1198,7 @@
         if (editor.value.trim()) saveCurrent(false);
         return;
       }
-      if (recognition) return;
+      if (recognition || finishing) return;
       if (composing) return;
       dictationRange = { start: editor.selectionEnd, end: editor.selectionEnd };
       speechUndoOpen = false;
@@ -1328,6 +1407,8 @@
       };
       recordButton.title = 'Pause / resume dictation (Ctrl/Cmd + Shift + Space)';
       addRow('Pause / resume dictation', 'Ctrl/Cmd + Shift + Space');
+      addRow('Hold to talk (release to finish)', 'Alt + Shift + Space');
+      addRow('Hold the focused talk button', 'Space / Enter');
       for (const [key, id, name] of actionShortcuts) {
         const element = getElement(id);
         element.title = `${name} (Alt + Shift + ${key.toUpperCase()})`;
@@ -1351,7 +1432,13 @@
     }
 
     function handleShortcut(event) {
-      if (event.defaultPrevented || event.repeat || event.isComposing || composing || event.getModifierState('AltGraph')) return;
+      if (event.defaultPrevented || event.isComposing || composing || event.getModifierState('AltGraph')) return;
+      if (event.code === 'Space' && event.altKey && event.shiftKey && !event.ctrlKey && !event.metaKey) {
+        event.preventDefault();
+        if (!event.repeat) beginHold('shortcut');
+        return;
+      }
+      if (event.repeat || holdSource || finishing) return;
       if (event.altKey && event.shiftKey && !event.ctrlKey && !event.metaKey) {
         const shortcut = actionShortcuts.find(([key]) => key === event.key.toLowerCase());
         if (!shortcut) return;
@@ -1407,6 +1494,41 @@
     editor.addEventListener('input', updateSelectionCorrection);
     document.addEventListener('selectionchange', updateSelectionCorrection);
     document.addEventListener('focusin', updateSelectionCorrection);
+    const holdButton = getElement('hold-button');
+    holdButton.addEventListener('contextmenu', event => event.preventDefault());
+    holdButton.addEventListener('pointerdown', event => {
+      if (event.button !== 0 || !event.isPrimary) return;
+      event.preventDefault();
+      if (beginHold('pointer')) {
+        holdPointerId = event.pointerId;
+        holdButton.setPointerCapture(event.pointerId);
+      }
+    });
+    const releasePointerHold = event => {
+      if (event.pointerId === holdPointerId) endHold('pointer');
+    };
+    holdButton.addEventListener('pointerup', releasePointerHold);
+    holdButton.addEventListener('pointercancel', releasePointerHold);
+    holdButton.addEventListener('lostpointercapture', releasePointerHold);
+    holdButton.addEventListener('keydown', event => {
+      if ((event.code === 'Space' || event.code === 'Enter') && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
+        event.preventDefault();
+        if (!event.repeat) beginHold('button-key');
+      }
+    });
+    holdButton.addEventListener('click', event => event.preventDefault());
+    document.addEventListener('keyup', event => {
+      if (holdSource === 'shortcut' && (event.code === 'Space' || !event.altKey || !event.shiftKey)) {
+        event.preventDefault();
+        endHold('shortcut');
+      } else if (holdSource === 'button-key' && ['Space', 'Enter'].includes(event.code)) {
+        event.preventDefault();
+        endHold('button-key');
+      }
+    });
+    window.addEventListener('blur', () => {
+      if (holdSource || finishing) stopForEditing('Hold ended because the window lost focus. Visible text kept.');
+    });
     recordButton.addEventListener('click', toggleRecording);
     getElement('save-speech-settings').addEventListener('click', saveSpeechSettings);
     document.addEventListener('keydown', handleShortcut);
@@ -1505,7 +1627,10 @@
       stopForEditing();
     });
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'hidden') persist();
+      if (document.visibilityState === 'hidden') {
+        persist();
+        if (holdSource || finishing) stopForEditing('Hold ended because the app is hidden. Visible text kept.');
+      }
     });
 
     try { setArchiveOpen(localStorage.getItem('dictatus_archive_open') !== 'false'); } catch {}

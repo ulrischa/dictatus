@@ -53,6 +53,7 @@ Open **Keyboard shortcuts** in the app for the complete action list. Button tool
 
 | Action | Shortcut |
 | --- | --- |
+| Hold to talk (release to finish) | Alt + Shift + Space |
 | Pause / resume at cursor | Ctrl/Cmd + Shift + Space |
 | New note | Alt + Shift + N |
 | Show / hide archive | Alt + Shift + B |
@@ -119,3 +120,12 @@ The textarea requests native spellchecking, with its `lang` set to the same lang
 Select an incorrectly written word or short phrase to reveal **Correct** in the editor row, then choose it (Alt + Shift + L). The correction form opens with the actual selected text already entered. Type the correct spelling and choose **Add correction** or press Enter. This stores a rule for future dictated text; it does not automatically replace existing occurrences or add a word to the browser's own dictionary. You can use this action on any selected text, including a word underlined by the browser. No external spellchecking service is added.
 
 The Show / Hide archive button below New collapses the sidebar and gives its width to the editor. This preference persists locally. On narrow screens, opening the archive focuses its search field; the close button returns focus to the toggle. The search shortcut also opens a collapsed archive.
+
+
+### Hold to talk and recording status
+
+Use **Start / Pause dictation** for longer sessions. For a short phrase, press and hold **Hold to talk** with a mouse or finger, speak when the status says **Listening**, then release. You can also hold **Alt + Shift + Space**, or hold Space/Enter while the talk button has keyboard focus. Browser or operating-system shortcuts may take precedence. The hold gesture cannot take over an already running toggle session.
+
+On release the app requests `SpeechRecognition.stop()` and shows **Finishing** while accepting the last result. The browser attempts to finalize captured audio; delivery is not guaranteed. If it does not finish within five seconds, the visible text is retained and a timeout is shown. Editing or moving the editor caret while finishing invalidates remaining results to protect your changes. A release during preparation cancels that pending start. Android sessions reconnect only while the hold is still active. Pointer cancellation or lost capture ends a pointer hold; switching away from the window or hiding the app cancels a hold and keeps visible text.
+
+Status meanings: **Connecting** = not yet listening; **Listening** = recognition is active; **Processing / Finishing** = waiting for results; **Paused** = recording is off. An amber indicator marks preparation/processing, a pulsing red indicator marks listening, and errors are shown explicitly. The interface does not show a simulated audio level.

@@ -926,3 +926,193 @@ test('archive collapses, frees editor width, persists and reopens for search', a
   assert.equal(await page.locator('#archive-search').evaluate(e => e === document.activeElement), true);
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
 });
+
+async function holdKeys(page) {
+  await page.keyboard.down('Alt');
+  await page.keyboard.down('Shift');
+  await page.keyboard.down('Space');
+}
+async function releaseHoldKeys(page) {
+  await page.keyboard.up('Space');
+  await page.keyboard.up('Shift');
+  await page.keyboard.up('Alt');
+}
+
+test('hold shortcut accepts final words after release and never reconnects afterward', async t => {
+  const page = await setup(t, '', 0);
+  await page.locator('#record-button').click();
+  await holdKeys(page);
+  await page.waitForFunction(() => sessions.filter(s => s.onresult).length === 2);
+  assert.equal(await page.locator('#status-title').textContent(), 'Listening');
+  await page.evaluate(() => { sessions.at(-1).stop = () => { window.stopCalled = true; }; });
+  await emit(page, [['hello', false]]);
+  await releaseHoldKeys(page);
+  assert.equal(await page.evaluate(() => stopCalled), true);
+  assert.equal(await page.locator('#status-title').textContent(), 'Finishing…');
+  assert.equal(await page.locator('#status-dot').getAttribute('data-phase'), 'finishing');
+  await emit(page, [['hello punctuation period', true]]);
+  await page.evaluate(() => sessions.at(-1).onend());
+  assert.equal(await value(page), 'hello.');
+  assert.equal(await page.locator('#status-title').textContent(), 'Paused');
+  await page.waitForTimeout(350);
+  assert.equal(await page.evaluate(() => sessions.filter(s => s.onresult).length), 2);
+});
+
+test('editing during hold finalization protects the edit from late final results', async t => {
+  const page = await setup(t, '', 0);
+  await page.locator('#record-button').click();
+  await holdKeys(page);
+  await page.waitForFunction(() => sessions.filter(s => s.onresult).length === 2);
+  await emit(page, [['hello', false]]);
+  await page.evaluate(() => { sessions.at(-1).stop = () => {}; });
+  await releaseHoldKeys(page);
+  await page.locator('#editor').fill('My correction');
+  await emit(page, [['late result', true]]);
+  assert.equal(await value(page), 'My correction');
+  assert.equal(await page.locator('#hold-button').isEnabled(), true);
+});
+
+test('pointer hold stops on release outside the button and keeps the editor caret', async t => {
+  const page = await setup(t, 'Hello world', 6);
+  await page.locator('#record-button').click();
+  await page.locator('#hold-button').scrollIntoViewIfNeeded();
+  const box = await page.locator('#hold-button').boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.waitForFunction(() => sessions.filter(s => s.onresult).length === 2);
+  await emit(page, [['new', true]]);
+  await page.mouse.move(2, 2);
+  await page.mouse.up();
+  assert.equal(await value(page), 'Hello new world');
+  assert.equal(await page.locator('#hold-button').getAttribute('aria-pressed'), 'false');
+  assert.equal(await page.locator('#status-title').textContent(), 'Paused');
+});
+
+test('releasing a modifier, pointer cancellation and window blur all end hold recording', async t => {
+  const page = await setup(t, '', 0);
+  await page.locator('#record-button').click();
+  await holdKeys(page);
+  await page.waitForFunction(() => sessions.filter(s => s.onresult).length === 2);
+  await page.keyboard.up('Alt');
+  assert.equal(await page.locator('#hold-button').getAttribute('aria-pressed'), 'false');
+  await page.keyboard.up('Space');
+  await page.keyboard.up('Shift');
+  await holdKeys(page);
+  await page.waitForFunction(() => sessions.filter(s => s.onresult).length === 3);
+  await page.evaluate(() => window.dispatchEvent(new Event('blur')));
+  await emit(page, [['stale', true]]);
+  assert.equal(await value(page), '');
+  await releaseHoldKeys(page);
+  await page.locator('#hold-button').scrollIntoViewIfNeeded();
+  const box = await page.locator('#hold-button').boundingBox();
+  await page.mouse.move(box.x + 10, box.y + 10);
+  await page.mouse.down();
+  await page.waitForFunction(() => sessions.filter(s => s.onresult).length === 4);
+  await page.locator('#hold-button').evaluate(e => e.dispatchEvent(new PointerEvent('pointercancel', { pointerId: 1 })));
+  await page.mouse.up();
+  assert.equal(await page.locator('#hold-button').getAttribute('aria-pressed'), 'false');
+});
+
+test('hold can be operated with Space on the focused button without inserting spaces', async t => {
+  const page = await setup(t, '', 0);
+  await page.locator('#record-button').click();
+  await page.locator('#hold-button').focus();
+  await page.keyboard.down('Space');
+  await page.waitForFunction(() => sessions.filter(s => s.onresult).length === 2);
+  await emit(page, [['hello', true]]);
+  await page.keyboard.up('Space');
+  assert.equal(await value(page), 'hello');
+  assert.equal(await page.locator('#hold-button').getAttribute('aria-pressed'), 'false');
+});
+
+test('quick release during preparation invalidates the pending hold start', async t => {
+  const page = await setup(t, '', 0);
+  await page.locator('#record-button').click();
+  await page.evaluate(() => {
+    SpeechRecognition.prototype.processLocally = false;
+    SpeechRecognition.available = () => new Promise(resolve => { window.resolveAvailability = resolve; });
+    SpeechRecognition.install = async () => true;
+  });
+  await holdKeys(page);
+  await page.waitForFunction(() => !!window.resolveAvailability);
+  assert.equal(await page.locator('#status-title').textContent(), 'Connecting…');
+  await releaseHoldKeys(page);
+  await page.evaluate(() => resolveAvailability('available'));
+  await page.waitForTimeout(350);
+  assert.equal(await page.evaluate(() => sessions.filter(s => s.onresult).length), 1);
+  assert.equal(await page.locator('#status-title').textContent(), 'Paused');
+});
+
+test('Android reconnects only while the hold remains pressed', async t => {
+  const page = await setup(t, '', 0, { userAgent: 'Mozilla/5.0 (Linux; Android 14) Chrome/130.0 Mobile Safari/537.36', hasTouch: true });
+  await page.locator('#record-button').click();
+  await holdKeys(page);
+  await page.waitForFunction(() => sessions.filter(s => s.onresult).length === 2);
+  await emit(page, [['one', true]]);
+  await page.evaluate(() => sessions.at(-1).onend());
+  assert.equal(await page.locator('#status-title').textContent(), 'Connecting…');
+  await page.waitForFunction(() => sessions.filter(s => s.onresult).length === 3);
+  await emit(page, [['two', true]]);
+  await releaseHoldKeys(page);
+  assert.equal(await value(page), 'one two');
+  await page.waitForTimeout(350);
+  assert.equal(await page.evaluate(() => sessions.filter(s => s.onresult).length), 3);
+});
+
+test('hold shortcut cannot take over an active toggle session', async t => {
+  const page = await setup(t, '', 0);
+  assert.equal(await page.locator('#hold-button').isDisabled(), true);
+  await holdKeys(page);
+  await releaseHoldKeys(page);
+  assert.equal(await page.locator('#record-button').getAttribute('aria-pressed'), 'true');
+  assert.equal(await page.evaluate(() => sessions.filter(s => s.onresult).length), 1);
+});
+
+test('stuck finalization times out without losing visible text', async t => {
+  const page = await setup(t, '', 0);
+  await page.locator('#record-button').click();
+  await page.clock.install();
+  await holdKeys(page);
+  await page.waitForFunction(() => sessions.filter(s => s.onresult).length === 2);
+  await emit(page, [['visible', false]]);
+  await page.evaluate(() => { sessions.at(-1).stop = () => {}; });
+  await releaseHoldKeys(page);
+  await page.clock.fastForward(5100);
+  assert.equal(await page.locator('#status-title').textContent(), 'Could not finish');
+  assert.equal(await value(page), 'visible');
+  assert.equal(await page.locator('#hold-button').isEnabled(), true);
+  await emit(page, [['too late', true]]);
+  assert.equal(await value(page), 'visible');
+});
+
+
+test('touch hold records until finger release without changing the mobile layout', async t => {
+  const page = await setup(t, '', 0, { userAgent: 'Mozilla/5.0 (Linux; Android 14) Chrome/130.0 Mobile Safari/537.36', hasTouch: true, isMobile: true, viewport: {width:390,height:844} });
+  await page.locator('#record-button').click();
+  await page.locator('#hold-button').scrollIntoViewIfNeeded();
+  const box = await page.locator('#hold-button').boundingBox();
+  const height = (await page.locator('.recording-controls').boundingBox()).height;
+  const client = await page.context().newCDPSession(page);
+  await client.send('Input.dispatchTouchEvent', {type:'touchStart',touchPoints:[{x:box.x+20,y:box.y+20}]});
+  await page.waitForFunction(() => sessions.filter(s => s.onresult).length === 2);
+  assert.equal((await page.locator('.recording-controls').boundingBox()).height, height);
+  await emit(page, [['touch phrase', true]]);
+  await client.send('Input.dispatchTouchEvent', {type:'touchEnd',touchPoints:[]});
+  assert.equal(await page.locator('#status-title').textContent(), 'Paused');
+  assert.equal(await value(page), 'touch phrase');
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  await client.detach();
+});
+
+test('permission failure clears hold state and never restarts on key release', async t => {
+  const page = await setup(t, '', 0);
+  await page.locator('#record-button').click();
+  await holdKeys(page);
+  await page.waitForFunction(() => sessions.filter(s => s.onresult).length === 2);
+  await page.evaluate(() => { sessions.at(-1).onerror({error:'not-allowed'}); sessions.at(-1).onend(); });
+  assert.equal(await page.locator('#hold-button').getAttribute('aria-pressed'), 'false');
+  assert.equal(await page.locator('#status-dot').getAttribute('data-phase'), 'error');
+  assert.equal(await page.locator('#record-button').isEnabled(), true);
+  await releaseHoldKeys(page);
+  assert.equal(await page.evaluate(() => sessions.filter(s => s.onresult).length), 2);
+});
