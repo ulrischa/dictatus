@@ -248,7 +248,6 @@
             </details>
             <label class="check-label"><input type="checkbox" id="auto-punctuation"> Let the browser add punctuation automatically</label>
             <p class="settings-help">Only available in browsers that support it.</p>
-          <button type="button" class="button" id="save-speech-settings">Save punctuation settings</button>
           <p id="settings-status" role="status"></p>
           <p id="speech-capabilities" role="status"></p>
           </div>
@@ -1488,7 +1487,6 @@
       ['i', 'import-button', 'Import'],
       ['f', 'archive-search', 'Search archive'],
       ['d', 'settings-toggle', 'Show/hide speech settings'],
-      ['w', 'save-speech-settings', 'Save speech settings'],
       ['k', 'shortcuts-toggle', 'Show/hide keyboard shortcuts'],
       ['u', 'undo-button', 'Undo editor change'],
       ['r', 'redo-button', 'Redo editor change']
@@ -1705,7 +1703,8 @@
       catch { toast('Language could not be saved. It applies only to this open page.'); }
       refreshTextTools();
     });
-    getElement('save-speech-settings').addEventListener('click', saveSpeechSettings);
+    getElement('command-mode').addEventListener('change', saveSpeechSettings);
+    getElement('auto-punctuation').addEventListener('change', saveSpeechSettings);
     document.addEventListener('keydown', handleShortcut);
     getElement('new-button').addEventListener('click', newNote);
     getElement('copy-button').addEventListener('click', copyText);

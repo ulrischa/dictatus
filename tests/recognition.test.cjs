@@ -269,7 +269,7 @@ async function settings(page, { commands = 'explicit', words = '', replacements 
   await page.locator('#custom-words').evaluate((e, value) => e.value = value, words);
   await page.locator('#custom-replacements').evaluate((e, value) => e.value = value, replacements);
   await page.locator('#auto-punctuation').setChecked(punctuation);
-  await page.locator('#save-speech-settings').click();
+  await page.locator('#command-mode').dispatchEvent('change');
   await page.locator('#editor').focus();
   await page.locator('#editor').evaluate(e => e.setSelectionRange(e.value.length, e.value.length));
   await page.locator('#record-button').click();
@@ -326,7 +326,7 @@ test('invalid replacement settings are rejected without losing previous settings
   await settings(page, { replacements: 'foo => Bar' });
   await page.locator('#record-button').click();
   await page.locator('#custom-replacements').evaluate(e => e.value = 'invalid line');
-  await page.locator('#save-speech-settings').click();
+  await page.locator('#command-mode').dispatchEvent('change');
   assert.match(await page.locator('#settings-status').textContent(), /line 1/i);
   await page.reload();
   assert.equal(await page.locator('#custom-replacements').inputValue(), 'foo => Bar');
@@ -416,7 +416,7 @@ test('keyboard markdown formats the selection and undo restores it', async t => 
 test('every app action shortcut routes to its accessible control', async t => {
   const page = await setup(t, 'Routing', 7);
   await page.keyboard.press('Control+Shift+Space');
-  const bindings = [['b','archive-toggle'],['m','format-toggle'],['l','selection-correction'],['c','copy-button'],['h','share-button'],['e','markdown-export-button'],['a','export-button'],['i','import-button'],['n','new-button'],['d','settings-toggle'],['w','save-speech-settings'],['k','shortcuts-toggle'],['u','undo-button'],['r','redo-button']];
+  const bindings = [['b','archive-toggle'],['m','format-toggle'],['l','selection-correction'],['c','copy-button'],['h','share-button'],['e','markdown-export-button'],['a','export-button'],['i','import-button'],['n','new-button'],['d','settings-toggle'],['k','shortcuts-toggle'],['u','undo-button'],['r','redo-button']];
   await page.evaluate(bindings => {
     window.shortcutClicks = [];
     for (const [, id] of bindings) {
@@ -1412,4 +1412,19 @@ test('translation remembers the last requested target across reloads', async t =
   await enableTextTools(page);
   await page.locator('#text-translate').click();
   assert.equal(await page.locator('#text-target-language').inputValue(), 'fr');
+});
+
+
+test('punctuation settings save on change without a Save button', async t => {
+  const page = await setup(t, '', 0);
+  await page.locator('#record-button').click();
+  await page.locator('#settings-toggle').click();
+  assert.equal(await page.locator('#save-speech-settings').count(), 0);
+  await page.locator('#command-mode').selectOption('simple');
+  await page.locator('#auto-punctuation').check();
+  assert.equal(await page.locator('#record-button').getAttribute('aria-pressed'), 'false');
+  await page.reload();
+  await page.locator('#settings-toggle').click();
+  assert.equal(await page.locator('#command-mode').inputValue(), 'simple');
+  assert.equal(await page.locator('#auto-punctuation').isChecked(), true);
 });

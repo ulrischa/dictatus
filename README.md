@@ -62,7 +62,7 @@ Open **Keyboard shortcuts** in the app for the complete action list. Button tool
 | Copy / share text | Alt + Shift + C / H |
 | Download Markdown / export archive | Alt + Shift + E / A |
 | Import / search archive | Alt + Shift + I / F |
-| Toggle speech settings / save them | Alt + Shift + D / W |
+| Toggle speech settings | Alt + Shift + D |
 | Toggle shortcut help | Alt + Shift + K |
 | Undo / redo editor change | Alt + Shift + U / R |
 | Undo / redo while editing | Ctrl/Cmd + Z / Ctrl/Cmd + Shift + Z; Ctrl + Y |
@@ -74,7 +74,7 @@ Use the top number row for Markdown shortcuts. Native keyboard navigation (Tab, 
 
 ## Speech commands and dictionary
 
-Open **Words & dictation settings** below the editor actions. Save punctuation choices with **Save punctuation settings**. Words and corrections save automatically when added or removed. Saving during dictation keeps it enabled and automatically starts a fresh recognition session with the updated configuration. New corrections apply immediately to incoming interim and final text. Saving while paused does not start recording.
+Open **Words & dictation settings** below the editor actions. Punctuation choices are saved immediately when changed. Words and corrections save automatically when added or removed. Saving during dictation keeps it enabled and automatically starts a fresh recognition session with the updated configuration. New corrections apply immediately to incoming interim and final text. Saving while paused does not start recording.
 
 Command conversion waits for a final recognition result: provisional text shows the spoken command words, then the confirmed result inserts the punctuation or line break. This prevents a tentative command from flashing as punctuation and disappearing when the browser revises it. Browser-generated punctuation and other interim text can still change before confirmation; the app cannot guarantee recognition accuracy. Confirmed punctuation is kept when subsequent interim words are revised or withdrawn. Pausing before confirmation keeps the visible, unconverted words.
 
