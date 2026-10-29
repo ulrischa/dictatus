@@ -1,13 +1,15 @@
 'use strict';
 
-const CACHE_NAME = 'dictatus-shell-v24';
+const CACHE_NAME = 'dictatus-shell-v25';
 const APP_SHELL = [
   './',
   './index.html',
   './assets/dictatus-logo.png',
   './manifest.webmanifest',
-  './icons/icon-192.png',
-  './icons/icon-512.png'
+  './icons/dictatus-192.png',
+  './icons/dictatus-512.png',
+  './icons/apple-touch-icon.png',
+  './icons/favicon-32.png'
 ];
 
 self.addEventListener('install', (event) => {
