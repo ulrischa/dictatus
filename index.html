@@ -45,9 +45,9 @@
     .button.primary:hover:not(:disabled) { background: var(--primary-hover); }
     .button.recording { background: var(--red); border-color: var(--red); color: #fff; }
     .button.recording:hover:not(:disabled) { background: #942339; }
-    .recording-controls { position: sticky; top: 8px; z-index: 2; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; background: white; }
+    .recording-controls { position: sticky; top: 8px; z-index: 2; display: grid; grid-template-columns: 1fr; background: white; }
     .recording-controls .button { height: 64px; padding: 8px; font-size: .9rem; line-height: 1.3; }
-    #hold-button { touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; font-size: .9rem; }
+    #record-button { touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; font-size: .9rem; }
     .dot[data-phase="connecting"], .dot[data-phase="finishing"] { background: #b47a15; }
     .dot[data-phase="error"] { background: #b5263e; }
     .button-wide { width: 100%; min-height: 60px; font-size: 1rem; border-radius: 8px; letter-spacing: .01em; }
@@ -155,10 +155,9 @@
     <div class="layout">
       <section class="panel" aria-label="Dictation editor">
         <div class="recording-controls">
-        <button type="button" id="record-button" aria-keyshortcuts="Control+Shift+Space Meta+Shift+Space" class="button primary button-wide" aria-pressed="false">● Start dictation</button>
-        <button type="button" id="hold-button" class="button" aria-keyshortcuts="Alt+Shift+Space" aria-pressed="false" title="Hold to talk (Alt + Shift + Space)">Hold to talk</button>
+        <button type="button" id="record-button" title="Tap to start / pause; hold to talk" aria-keyshortcuts="Control+Shift+Space Meta+Shift+Space Alt+Shift+Space" class="button primary button-wide" aria-pressed="false">● Start dictation</button>
         </div>
-        <p class="quick-help">Ctrl/Cmd + Shift + Space: start / pause. Hold Alt + Shift + Space to talk; release to finish.</p>
+        <p class="recording-help" style="font-size:.78rem;color:var(--muted);margin:6px 0">Tap to start / pause · Hold to talk</p>
         <div class="speech-info" role="status" aria-live="polite">
           <div>
             <div class="status-title"><span class="dot" id="status-dot"></span><span id="status-title">Ready to dictate</span></div>
@@ -800,16 +799,11 @@
     }
 
     function updateRecordingUI() {
-      recordButton.textContent = speechWanted ? 'Ⅱ Pause dictation' : paused ? '▶ Resume dictation' : '● Start dictation';
+      recordButton.textContent = finishing ? 'Finishing…' : holdSource ? 'Release to finish' : speechWanted ? 'Ⅱ Pause dictation' : paused ? '▶ Resume dictation' : '● Start dictation';
       recordButton.classList.toggle('recording', speechWanted);
       recordButton.classList.toggle('primary', !speechWanted);
       recordButton.setAttribute('aria-pressed', String(speechWanted));
-      recordButton.disabled = !SpeechRecognitionClass || !!holdSource || finishing;
-      const holdButton = getElement('hold-button');
-      holdButton.disabled = !SpeechRecognitionClass || finishing || (speechWanted && !holdSource);
-      holdButton.textContent = finishing ? 'Finishing…' : holdSource ? 'Release to finish' : 'Hold to talk';
-      holdButton.setAttribute('aria-pressed', String(!!holdSource));
-      holdButton.classList.toggle('recording', !!holdSource);
+      recordButton.disabled = !SpeechRecognitionClass || finishing;
       getElement('new-button').disabled = speechWanted || speechActive || !!recognition;
       getElement('import-button').disabled = speechWanted || speechActive || !!recognition;
       if (!SpeechRecognitionClass) recordButton.disabled = true;
@@ -1518,39 +1512,79 @@
     editor.addEventListener('input', updateSelectionCorrection);
     document.addEventListener('selectionchange', updateSelectionCorrection);
     document.addEventListener('focusin', updateSelectionCorrection);
-    const holdButton = getElement('hold-button');
-    holdButton.addEventListener('contextmenu', event => event.preventDefault());
-    holdButton.addEventListener('pointerdown', event => {
-      if (event.button !== 0 || !event.isPrimary) return;
+    // A short press toggles; a deliberate hold owns a temporary recording session.
+    let pressTimer = null;
+    let pressPointer = null;
+    let pressKey = null;
+    let suppressPressClick = false;
+    let longPress = false;
+    function cancelPendingPress() {
+      clearTimeout(pressTimer);
+      pressTimer = null;
+      pressPointer = null;
+      pressKey = null;
+    }
+    function armPress(source) {
+      longPress = false;
+      clearTimeout(pressTimer);
+      if (speechWanted || recognition || finishing) return;
+      pressTimer = setTimeout(() => {
+        longPress = true;
+        suppressPressClick = true;
+        beginHold(source);
+      }, 300);
+    }
+    recordButton.addEventListener('contextmenu', event => event.preventDefault());
+    recordButton.addEventListener('pointerdown', event => {
+      if (event.button !== 0 || !event.isPrimary || pressPointer !== null) return;
       event.preventDefault();
-      if (beginHold('pointer')) {
-        holdPointerId = event.pointerId;
-        holdButton.setPointerCapture(event.pointerId);
-      }
+      suppressPressClick = false;
+      pressPointer = event.pointerId;
+      recordButton.setPointerCapture(event.pointerId);
+      armPress('pointer');
     });
-    const releasePointerHold = event => {
-      if (event.pointerId === holdPointerId) endHold('pointer');
+    const releasePointerPress = event => {
+      if (event.pointerId !== pressPointer) return;
+      const bounds = recordButton.getBoundingClientRect();
+      const outside = event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom;
+      const cancelled = event.type !== 'pointerup' || outside;
+      if (cancelled || longPress) suppressPressClick = true;
+      cancelPendingPress();
+      if (holdSource === 'pointer') endHold('pointer');
     };
-    holdButton.addEventListener('pointerup', releasePointerHold);
-    holdButton.addEventListener('pointercancel', releasePointerHold);
-    holdButton.addEventListener('lostpointercapture', releasePointerHold);
-    holdButton.addEventListener('keydown', event => {
+    recordButton.addEventListener('pointerup', releasePointerPress);
+    recordButton.addEventListener('pointercancel', releasePointerPress);
+    recordButton.addEventListener('lostpointercapture', releasePointerPress);
+    recordButton.addEventListener('keydown', event => {
       if ((event.code === 'Space' || event.code === 'Enter') && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
         event.preventDefault();
-        if (!event.repeat) beginHold('button-key');
+        if (event.repeat || pressKey || event.isComposing) return;
+        pressKey = event.code;
+        suppressPressClick = false;
+        armPress('button-key');
       }
     });
-    holdButton.addEventListener('click', event => event.preventDefault());
+    recordButton.addEventListener('click', event => {
+      event.preventDefault();
+      if (suppressPressClick) { suppressPressClick = false; return; }
+      toggleRecording();
+    });
     document.addEventListener('keyup', event => {
       if (holdSource === 'shortcut' && (event.code === 'Space' || !event.altKey || !event.shiftKey)) {
         event.preventDefault();
         endHold('shortcut');
-      } else if (holdSource === 'button-key' && ['Space', 'Enter'].includes(event.code)) {
+      } else if (event.code === pressKey) {
         event.preventDefault();
-        endHold('button-key');
+        const wasLong = longPress;
+        cancelPendingPress();
+        if (holdSource === 'button-key') endHold('button-key');
+        else if (!wasLong) toggleRecording();
+        suppressPressClick = false;
       }
     });
     window.addEventListener('blur', () => {
+      suppressPressClick = true;
+      cancelPendingPress();
       if (holdSource || finishing) stopForEditing('Hold ended because the window lost focus. Visible text kept.');
     });
     getElement('allow-online').addEventListener('click', () => {
@@ -1558,9 +1592,8 @@
       forceBrowserService = true;
       getElement('online-consent').hidden = true;
       setMode('none');
-      setSpeechStatus('Ready for online dictation', 'Press Start or hold Hold to talk. Audio may be sent to the browser’s speech service.');
+      setSpeechStatus('Ready for online dictation', 'Tap or hold the dictation button. Audio may be sent to the browser’s speech service.');
     });
-    recordButton.addEventListener('click', toggleRecording);
     getElement('save-speech-settings').addEventListener('click', saveSpeechSettings);
     document.addEventListener('keydown', handleShortcut);
     getElement('new-button').addEventListener('click', newNote);
@@ -1658,6 +1691,7 @@
       stopForEditing();
     });
     document.addEventListener('visibilitychange', () => {
+      if (document.hidden) { suppressPressClick = true; cancelPendingPress(); }
       if (document.visibilityState === 'hidden') {
         persist();
         if (holdSource || finishing) stopForEditing('Hold ended because the app is hidden. Visible text kept.');
