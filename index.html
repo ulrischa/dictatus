@@ -148,6 +148,9 @@
     #text-dialog textarea { width: 100%; min-height: 100px; height: 150px; box-sizing: border-box; font: inherit; padding: 10px; }
     #text-dialog label { display: block; margin: 10px 0 4px; }
     #text-dialog label[hidden] { display: none; }
+    #text-options { margin-top: 12px; font-size: .85rem; }
+    .text-option-row { display: flex; flex-wrap: wrap; gap: 12px; }
+    #text-options[hidden], .text-option-row[hidden] { display: none; }
     .text-dialog-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
   </style>
 </head>
@@ -224,8 +227,12 @@
         </div>
         <details id="speech-settings">
           <summary id="settings-toggle">Words &amp; dictation settings</summary>
-          <label class="check-label"><input type="checkbox" id="online-allowed"> Allow online speech recognition</label>
-          <p class="settings-help">Saved immediately in this browser. When enabled, dictation uses the browser service, which may send audio online. Turn off to require local recognition.</p>
+          <label for="online-allowed">Speech processing</label>
+          <select id="online-allowed"><option value="local">Local only</option><option value="prefer-local">Prefer local · allow online</option></select>
+          <p class="settings-help">Local is always tried first. Online is used only when local recognition is unavailable and you have allowed it.</p>
+          <label for="dictation-language">Dictation language</label>
+          <select id="dictation-language"><option value="auto">Browser language</option><option value="de-DE">Deutsch (Deutschland)</option><option value="en-US">English (US)</option><option value="en-GB">English (UK)</option><option value="fr-FR">Français</option><option value="es-ES">Español</option><option value="it-IT">Italiano</option><option value="pt-PT">Português</option><option value="nl-NL">Nederlands</option><option value="pl-PL">Polski</option><option value="uk-UA">Українська</option><option value="ja-JP">日本語</option><option value="ko-KR">한국어</option><option value="zh-CN">中文</option></select>
+          <p class="settings-help">Changes are saved immediately and pause dictation.</p>
           <div class="settings-section">
             <h3>Speak punctuation</h3>
             <label for="command-mode">How would you like to say it?</label>
@@ -299,6 +306,17 @@
     <p id="text-scope"></p>
     <label>Text language <select id="text-source-language"></select></label>
     <label id="text-target-field" hidden>Translate to <select id="text-target-language"></select></label>
+    <details id="text-options" hidden>
+      <summary>Options</summary>
+      <div class="text-option-row" id="rewrite-options">
+        <label>Tone <select id="rewrite-tone"><option value="as-is">Unchanged</option><option value="more-formal">More formal</option><option value="more-casual">More casual</option></select></label>
+        <label>Length <select id="rewrite-length"><option value="as-is">Unchanged</option><option value="shorter">Shorter</option><option value="longer">Longer</option></select></label>
+      </div>
+      <div class="text-option-row" id="summary-options">
+        <label>Length <select id="summary-length"><option value="short">Short</option><option value="medium">Medium</option><option value="long">Long</option></select></label>
+        <label>Style <select id="summary-type"><option value="key-points">Bullet points</option><option value="tldr">Paragraph</option></select></label>
+      </div>
+    </details>
     <label for="text-original">Original</label><textarea id="text-original" readonly></textarea>
     <label for="text-result">Preview</label><textarea id="text-result" readonly></textarea>
     <p id="text-status" role="status" aria-live="polite"></p>
@@ -323,7 +341,12 @@
     const recordButton = getElement('record-button');
     const modeBadge = getElement('mode-badge');
     const androidRecognition = navigator.userAgentData?.platform === 'Android' || /Android/i.test(navigator.userAgent) || (/Linux/i.test(navigator.platform) && navigator.maxTouchPoints > 0);
-    const speechLanguage = navigator.language || navigator.languages?.[0] || 'en-US';
+    const browserLanguage = navigator.language || navigator.languages?.[0] || 'en-US';
+    let languagePreference = 'auto';
+    try { languagePreference = localStorage.getItem('dictatus_language') || 'auto'; } catch {}
+    if (![...getElement('dictation-language').options].some(option => option.value === languagePreference)) languagePreference = 'auto';
+    getElement('dictation-language').value = languagePreference;
+    let speechLanguage = languagePreference === 'auto' ? browserLanguage : languagePreference;
     // The English interface must not determine the dictated text's spelling language.
     editor.lang = speechLanguage;
     getElement('replacement-entry').lang = speechLanguage;
@@ -347,8 +370,9 @@
     let speechMode = 'none';
     const ONLINE_CONSENT_KEY = 'dictatus_online_allowed';
     let forceBrowserService = false;
-    try { forceBrowserService = localStorage.getItem(ONLINE_CONSENT_KEY) === 'true'; } catch {}
-    getElement('online-allowed').checked = forceBrowserService;
+    let onlineAllowed = false;
+    try { onlineAllowed = localStorage.getItem(ONLINE_CONSENT_KEY) === 'true'; } catch {}
+    getElement('online-allowed').value = onlineAllowed ? 'prefer-local' : 'local';
     let recognitionToken = 0;
     let processedFinals = new Set();
     let listeningDetail = '';
@@ -1033,6 +1057,21 @@
     }
 
     function requestOnlineConsent(message) {
+      if (onlineAllowed && speechWanted) {
+        const previous = recognition;
+        recognition = null;
+        ++recognitionToken;
+        if (previous) { try { previous.abort(); } catch {} }
+        finishSpeechSegment();
+        forceBrowserService = true;
+        speechActive = false;
+        clearTimeout(restartTimer);
+        setMode('checking');
+        setSpeechStatus('Connecting…', 'Local recognition unavailable. Using your allowed online fallback.', 'connecting');
+        updateRecordingUI();
+        restartTimer = setTimeout(startRecognition, 250);
+        return;
+      }
       stopForEditing('Visible text kept.');
       forceBrowserService = false;
       setMode('error');
@@ -1042,13 +1081,13 @@
 
     async function selectRecognitionMode(token) {
       if (forceBrowserService) return 'browser';
-      if (typeof SpeechRecognitionClass?.available !== 'function') return 'unavailable';
+      if (typeof SpeechRecognitionClass?.available !== 'function') return onlineAllowed ? 'browser' : 'unavailable';
       const probe = new SpeechRecognitionClass();
-      if (!('processLocally' in probe)) return 'unavailable';
+      if (!('processLocally' in probe)) return onlineAllowed ? 'browser' : 'unavailable';
       const options = { langs: [speechLanguage], processLocally: true };
       try {
         let availability = await SpeechRecognitionClass.available(options);
-        if (!speechWanted || token !== recognitionToken) return 'unavailable';
+        if (!speechWanted || token !== recognitionToken) return onlineAllowed ? 'browser' : 'unavailable';
         if (availability === 'available') return 'offline';
         if ((availability === 'downloadable' || availability === 'downloading') && typeof SpeechRecognitionClass.install === 'function') {
           setSpeechStatus('Connecting…', `Checking ${speechLanguage} language pack. Not listening yet.`, 'connecting');
@@ -1062,7 +1101,7 @@
         // Local failures require explicit permission before any online session.
         console.warn('On-device recognition unavailable:', error);
       }
-      return 'unavailable';
+      return onlineAllowed ? 'browser' : 'unavailable';
     }
 
     async function startRecognition() {
@@ -1259,6 +1298,7 @@
       dictationRange = { start: editor.selectionEnd, end: editor.selectionEnd };
       speechUndoOpen = false;
       speechWanted = true;
+      forceBrowserService = false;
       getElement('online-consent').hidden = true;
       disableHints = false;
       paused = false;
@@ -1632,14 +1672,15 @@
       if (holdSource || finishing) stopForEditing('Hold ended because the window lost focus. Visible text kept.');
     });
     function saveOnlinePermission(allowed) {
-      forceBrowserService = allowed;
-      getElement('online-allowed').checked = allowed;
+      onlineAllowed = allowed;
+      forceBrowserService = false;
+      getElement('online-allowed').value = allowed ? 'prefer-local' : 'local';
       try { localStorage.setItem(ONLINE_CONSENT_KEY, String(allowed)); }
       catch { toast('This choice could not be saved. It applies only to this open page.'); }
     }
     getElement('online-allowed').addEventListener('change', event => {
       stopForEditing('Recognition preference changed. Start dictation when ready.');
-      saveOnlinePermission(event.target.checked);
+      saveOnlinePermission(event.target.value === 'prefer-local');
       getElement('online-consent').hidden = true;
     });
     getElement('allow-online').addEventListener('click', () => {
@@ -1647,7 +1688,22 @@
       saveOnlinePermission(true);
       getElement('online-consent').hidden = true;
       setMode('none');
-      setSpeechStatus('Ready for online dictation', 'Tap or hold the dictation button. Audio may be sent to the browser’s speech service.');
+      setSpeechStatus('Ready to dictate', 'Tap or hold the dictation button. Audio may be sent to the browser’s speech service.');
+    });
+    getElement('dictation-language').addEventListener('change', event => {
+      stopForEditing('Language changed. Start dictation when ready.');
+      languagePreference = event.target.value;
+      speechLanguage = languagePreference === 'auto' ? browserLanguage : languagePreference;
+      forceBrowserService = false;
+      editor.lang = speechLanguage;
+      getElement('replacement-entry').lang = speechLanguage;
+      textLanguage = speechLanguage.split('-')[0];
+      for (const id of ['text-source-language', 'text-target-language']) {
+        if (![...getElement(id).options].some(option => option.value === textLanguage)) getElement(id).add(new Option(textLanguage, textLanguage));
+      }
+      try { localStorage.setItem('dictatus_language', languagePreference); }
+      catch { toast('Language could not be saved. It applies only to this open page.'); }
+      refreshTextTools();
     });
     getElement('save-speech-settings').addEventListener('click', saveSpeechSettings);
     document.addEventListener('keydown', handleShortcut);
@@ -1760,10 +1816,11 @@
       translate: { api: 'Translator', label: 'Translate', method: 'translate' }
     };
     const textLanguages = { en: 'English', de: 'German', fr: 'French', es: 'Spanish', it: 'Italian', pt: 'Portuguese', nl: 'Dutch', pl: 'Polish', uk: 'Ukrainian', ja: 'Japanese', ko: 'Korean', zh: 'Chinese' };
-    const textLanguage = speechLanguage.split('-')[0];
+    let textLanguage = speechLanguage.split('-')[0];
     const textDialog = getElement('text-dialog');
     let textJob = null;
     let textCheck = 0;
+    let textAvailabilityCheck = 0;
     function textOptions(kind, source = textLanguage, target = source) {
       if (kind === 'translate') return { sourceLanguage: source, targetLanguage: target };
       const options = { expectedInputLanguages: [source] };
@@ -1781,15 +1838,20 @@
       } catch { return 'unavailable'; }
     }
     async function refreshTextTools() {
+      const generation = ++textAvailabilityCheck;
+      const language = textLanguage;
+      for (const kind of Object.keys(textTools)) getElement('text-' + kind).hidden = true;
+      getElement('text-tools').hidden = true;
       await Promise.all(Object.keys(textTools).map(async kind => {
         let supported;
         if (kind === 'translate') {
-          const statuses = await Promise.all(Object.keys(textLanguages).filter(lang => lang !== textLanguage)
-            .map(lang => textAvailability(kind, textOptions(kind, textLanguage, lang))));
+          const statuses = await Promise.all(Object.keys(textLanguages).filter(lang => lang !== language)
+            .map(lang => textAvailability(kind, textOptions(kind, language, lang))));
           supported = statuses.some(status => status !== 'unavailable');
-        } else supported = await textAvailability(kind, textOptions(kind)) !== 'unavailable';
-        getElement('text-' + kind).hidden = !supported;
+        } else supported = await textAvailability(kind, textOptions(kind, language)) !== 'unavailable';
+        if (generation === textAvailabilityCheck) getElement('text-' + kind).hidden = !supported;
       }));
+      if (generation !== textAvailabilityCheck) return;
       getElement('text-tools').hidden = !Object.keys(textTools).some(kind => !getElement('text-' + kind).hidden);
     }
     function disposeTextJob() {
@@ -1809,6 +1871,11 @@
       getElement('text-result').value = '';
       job.result = null;
       job.options = textOptions(job.kind, getElement('text-source-language').value, getElement('text-target-language').value);
+      if (job.kind === 'rewrite') Object.assign(job.options, { tone: getElement('rewrite-tone').value, length: getElement('rewrite-length').value });
+      if (job.kind === 'summarize') Object.assign(job.options, { length: getElement('summary-length').value, type: getElement('summary-type').value });
+      const optionIds = job.kind === 'rewrite' ? ['rewrite-tone', 'rewrite-length'] : job.kind === 'summarize' ? ['summary-length', 'summary-type'] : [];
+      const changedOptions = optionIds.map(id => getElement(id)).filter(select => select.selectedIndex > 0).map(select => select.selectedOptions[0].textContent);
+      getElement('text-options').querySelector('summary').textContent = changedOptions.length ? 'Options · ' + changedOptions.join(' · ') : 'Options';
       getElement('text-status').textContent = 'Checking local availability…';
       const sameLanguage = job.kind === 'translate' && job.options.sourceLanguage === job.options.targetLanguage;
       const status = sameLanguage ? 'unavailable' : await textAvailability(job.kind, job.options);
@@ -1835,10 +1902,17 @@
       getElement('text-original').value = textJob.input;
       getElement('text-result').value = '';
       getElement('text-source-language').value = textLanguage;
-      getElement('text-target-language').value = textLanguage === 'en' ? 'de' : 'en';
+      let target = textLanguage === 'en' ? 'de' : 'en';
+      try { const saved = localStorage.getItem('dictatus_translation_target'); if (saved !== textLanguage && [...getElement('text-target-language').options].some(option => option.value === saved)) target = saved; } catch {}
+      getElement('text-target-language').value = target;
+      getElement('text-options').hidden = !['rewrite', 'summarize'].includes(kind);
+      getElement('text-options').open = false;
+      getElement('rewrite-options').hidden = kind !== 'rewrite';
+      getElement('summary-options').hidden = kind !== 'summarize';
       getElement('text-target-field').hidden = kind !== 'translate';
       getElement('text-source-language').disabled = false;
       getElement('text-target-language').disabled = false;
+      for (const select of getElement('text-options').querySelectorAll('select')) select.disabled = false;
       textDialog.showModal();
       checkTextOptions();
     }
@@ -1847,6 +1921,10 @@
       if (!job || job.busy || !job.available) return;
       job.busy = true;
       job.controller = new AbortController();
+      for (const select of getElement('text-options').querySelectorAll('select')) select.disabled = true;
+      if (job.kind === 'translate') {
+        try { localStorage.setItem('dictatus_translation_target', job.options.targetLanguage); } catch { toast('Translation target could not be saved.'); }
+      }
       getElement('text-run').disabled = true;
       getElement('text-apply').disabled = true;
       getElement('text-source-language').disabled = true;
@@ -1877,6 +1955,7 @@
         job.session = null;
         if (textJob === job) {
           job.busy = false;
+          for (const select of getElement('text-options').querySelectorAll('select')) select.disabled = false;
           getElement('text-run').disabled = false;
           getElement('text-source-language').disabled = false;
           getElement('text-target-language').disabled = false;
@@ -1911,6 +1990,7 @@
       getElement('text-' + kind).addEventListener('pointerdown', event => event.preventDefault());
       getElement('text-' + kind).addEventListener('click', () => openTextTool(kind));
     }
+    for (const select of getElement('text-options').querySelectorAll('select')) select.addEventListener('change', checkTextOptions);
     getElement('text-run').addEventListener('click', runTextTool);
     getElement('text-apply').addEventListener('click', applyTextResult);
     getElement('text-cancel').addEventListener('click', () => textDialog.close());

@@ -1032,6 +1032,7 @@ test('quick release during preparation invalidates the pending hold start', asyn
   await page.locator('#record-button').click();
   await page.evaluate(() => {
     forceBrowserService = false;
+    onlineAllowed = false;
     SpeechRecognition.prototype.processLocally = false;
     SpeechRecognition.available = () => new Promise(resolve => { window.resolveAvailability = resolve; });
     SpeechRecognition.install = async () => true;
@@ -1143,6 +1144,7 @@ test('offline is shown only on start and local failure never starts an online se
   await page.locator('#record-button').click();
   await page.evaluate(() => {
     forceBrowserService = false;
+    onlineAllowed = false;
     SpeechRecognition.prototype.processLocally = false;
     SpeechRecognition.available = async () => 'available';
     SpeechRecognition.prototype.start = function() {};
@@ -1167,6 +1169,7 @@ test('synchronous start failure clears pending offline indication', async t => {
   await page.locator('#record-button').click();
   await page.evaluate(() => {
     forceBrowserService = false;
+    onlineAllowed = false;
     SpeechRecognition.prototype.processLocally = false;
     SpeechRecognition.available = async () => 'available';
     SpeechRecognition.prototype.start = () => { throw new DOMException('unsupported', 'NotSupportedError'); };
@@ -1329,11 +1332,84 @@ test('online consent persists across reloads and can be revoked immediately', as
   assert.equal(await page.locator('#mode-badge').textContent(), 'Online');
   assert.equal(await page.locator('#online-consent').isVisible(), false);
   await page.locator('#settings-toggle').click();
-  assert.equal(await page.locator('#online-allowed').isChecked(), true);
-  await page.locator('#online-allowed').uncheck();
+  assert.equal(await page.locator('#online-allowed').inputValue(), 'prefer-local');
+  await page.locator('#online-allowed').selectOption('local');
   assert.equal(await page.locator('#status-title').textContent(), 'Paused');
   await page.reload();
   await page.locator('#record-button').click();
   await page.locator('#online-consent').waitFor({state:'visible'});
   assert.equal(await page.evaluate(() => sessions.filter(s => s.onresult).length), 0);
+});
+
+test('online permission still prefers local and allows fallback after a local failure', async t => {
+  const page = await setup(t);
+  await page.locator('#record-button').click();
+  await page.evaluate(() => {
+    SpeechRecognition.prototype.processLocally = false;
+    SpeechRecognition.available = async () => 'available';
+  });
+  await page.locator('#record-button').click();
+  assert.equal(await page.locator('#mode-badge').textContent(), 'Offline');
+  await page.evaluate(() => sessions.at(-1).onerror({error:'network'}));
+  await page.waitForFunction(() => document.getElementById('mode-badge').textContent === 'Online');
+  assert.equal(await page.locator('#online-consent').isVisible(), false);
+  assert.equal(await page.evaluate(() => sessions.at(-1).processLocally), false);
+  await page.locator('#record-button').click();
+  await page.locator('#record-button').click();
+  assert.equal(await page.locator('#mode-badge').textContent(), 'Offline');
+});
+
+test('dictation language pauses recording, updates spelling and survives reload', async t => {
+  const page = await setup(t);
+  await page.locator('#settings-toggle').click();
+  await page.locator('#dictation-language').selectOption('de-DE');
+  assert.equal(await page.locator('#status-title').textContent(), 'Paused');
+  assert.equal(await page.locator('#editor').getAttribute('lang'), 'de-DE');
+  await page.locator('#record-button').click();
+  assert.equal(await page.evaluate(() => sessions.at(-1).lang), 'de-DE');
+  await page.reload();
+  assert.equal(await page.locator('#editor').getAttribute('lang'), 'de-DE');
+  await page.locator('#settings-toggle').click();
+  assert.equal(await page.locator('#dictation-language').inputValue(), 'de-DE');
+  await page.locator('#dictation-language').selectOption('auto');
+  assert.equal(await page.locator('#editor').getAttribute('lang'), 'en-US');
+});
+
+test('compact dialog options configure rewriting and summaries and invalidate old previews', async t => {
+  const page = await setup(t, 'Text to improve', 0);
+  await enableTextTools(page);
+  for (const kind of ['rewrite','summarize']) {
+    await page.locator('#text-' + kind).click();
+    assert.equal(await page.locator('#text-options').getAttribute('open'), null);
+    await page.locator('#text-options summary').click();
+    if (kind === 'rewrite') {
+      await page.locator('#rewrite-tone').selectOption('more-formal');
+      await page.locator('#rewrite-length').selectOption('shorter');
+    } else {
+      await page.locator('#summary-type').selectOption('tldr');
+      await page.locator('#summary-length').selectOption('long');
+    }
+    await page.locator('#text-run').click();
+    await page.waitForFunction(() => !document.getElementById('text-apply').disabled);
+    const options = await page.evaluate(() => toolCalls.filter(c => c.phase === 'create').at(-1).options);
+    assert.equal(options.length, kind === 'rewrite' ? 'shorter' : 'long');
+    assert.equal(kind === 'rewrite' ? options.tone : options.type, kind === 'rewrite' ? 'more-formal' : 'tldr');
+    await page.locator(kind === 'rewrite' ? '#rewrite-length' : '#summary-length').selectOption(kind === 'rewrite' ? 'longer' : 'short');
+    assert.equal(await page.locator('#text-apply').isDisabled(), true);
+    await page.locator('#text-cancel').click();
+  }
+});
+
+test('translation remembers the last requested target across reloads', async t => {
+  const page = await setup(t, 'Translate me', 0);
+  await enableTextTools(page);
+  await page.locator('#text-translate').click();
+  await page.locator('#text-target-language').selectOption('fr');
+  await page.locator('#text-run').click();
+  await page.waitForFunction(() => !document.getElementById('text-apply').disabled);
+  await page.locator('#text-cancel').click();
+  await page.reload();
+  await enableTextTools(page);
+  await page.locator('#text-translate').click();
+  assert.equal(await page.locator('#text-target-language').inputValue(), 'fr');
 });
