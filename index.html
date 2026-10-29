@@ -162,9 +162,14 @@
         <div class="speech-info" role="status" aria-live="polite">
           <div>
             <div class="status-title"><span class="dot" id="status-dot"></span><span id="status-title">Ready to dictate</span></div>
-            <p class="status-caption" id="status-help">Uses your browser language.</p>
+            <p class="status-caption" id="status-help">Local recognition is checked when you start.</p>
           </div>
           <span id="mode-badge" class="mode-badge">Not started</span>
+        </div>
+
+        <div id="online-consent" hidden>
+          <p>Local recognition is unavailable. Online mode allows your browser to send audio to its speech service. This permission lasts until you reload this page.</p>
+          <button type="button" class="button" id="allow-online">Allow online mode</button>
         </div>
 
         <div class="editor-wrap">
@@ -788,9 +793,10 @@
     function setMode(mode) {
       speechMode = mode;
       modeBadge.className = `mode-badge${mode === 'offline' ? ' offline' : mode === 'browser' ? ' browser' : ''}`;
-      modeBadge.textContent = mode === 'offline' ? 'Offline recognition' :
-        mode === 'browser' ? 'Browser service · may be online' :
-        mode === 'checking' ? 'Checking recognition…' : 'Not started';
+      modeBadge.textContent = mode === 'offline' ? 'Offline' :
+        mode === 'browser' ? 'Online' :
+        mode === 'checking' ? 'Checking…' : mode === 'error' ? 'Error' : mode === 'paused' ? 'Paused' : 'Not started';
+      modeBadge.title = mode === 'browser' ? 'Online mode: remote processing is allowed. The browser chooses the actual processing location.' : '';
     }
 
     function updateRecordingUI() {
@@ -856,6 +862,7 @@
       speechUndoOpen = false;
       if (previous) { try { previous.abort(); } catch {} }
       updateRecordingUI();
+      setMode('paused');
       setSpeechStatus('Paused', message, 'paused');
     }
 
@@ -986,23 +993,31 @@
       speechActive = false;
       if (previous) { try { previous.abort(); } catch {} }
       updateRecordingUI();
+      setMode('checking');
       setSpeechStatus(composing ? 'Editing…' : 'Connecting…', 'Wait for Listening before speaking again.', composing ? 'editing' : 'connecting');
       // Debounce keystrokes and wait for IME commit; never interrupt composition.
       if (!composing) restartTimer = setTimeout(startRecognition, 250);
     }
 
+    function requestOnlineConsent(message) {
+      stopForEditing('Visible text kept.');
+      forceBrowserService = false;
+      setMode('error');
+      setSpeechStatus('Local recognition unavailable', message + ' Allow online mode below, or try local recognition again.', 'error');
+      getElement('online-consent').hidden = false;
+    }
+
     async function selectRecognitionMode(token) {
       if (forceBrowserService) return 'browser';
-      if (typeof SpeechRecognitionClass?.available !== 'function' ||
-          typeof SpeechRecognitionClass?.install !== 'function') return 'browser';
+      if (typeof SpeechRecognitionClass?.available !== 'function') return 'unavailable';
       const probe = new SpeechRecognitionClass();
-      if (!('processLocally' in probe)) return 'browser';
+      if (!('processLocally' in probe)) return 'unavailable';
       const options = { langs: [speechLanguage], processLocally: true };
       try {
         let availability = await SpeechRecognitionClass.available(options);
-        if (!speechWanted || token !== recognitionToken) return 'browser';
+        if (!speechWanted || token !== recognitionToken) return 'unavailable';
         if (availability === 'available') return 'offline';
-        if (availability === 'downloadable' || availability === 'downloading') {
+        if ((availability === 'downloadable' || availability === 'downloading') && typeof SpeechRecognitionClass.install === 'function') {
           setSpeechStatus('Connecting…', `Checking ${speechLanguage} language pack. Not listening yet.`, 'connecting');
           const installed = await SpeechRecognitionClass.install(options);
           if (installed) {
@@ -1011,10 +1026,10 @@
           }
         }
       } catch (error) {
-        // A missing API permission, unsupported browser, or installation failure falls back safely.
+        // Local failures require explicit permission before any online session.
         console.warn('On-device recognition unavailable:', error);
       }
-      return 'browser';
+      return 'unavailable';
     }
 
     async function startRecognition() {
@@ -1024,7 +1039,7 @@
       setSpeechStatus('Connecting…', `Not listening yet · ${speechLanguage}`, 'connecting');
       const mode = await selectRecognitionMode(token);
       if (!speechWanted || token !== recognitionToken) return;
-      setMode(mode);
+      if (mode === 'unavailable') { requestOnlineConsent('Local recognition is unavailable or its language pack could not be prepared.'); return; }
       processedFinals = new Set();
       speechError = '';
       const instance = new SpeechRecognitionClass();
@@ -1036,13 +1051,17 @@
       let terminalResultReceived = false;
       instance.interimResults = true;
       instance.maxAlternatives = 1;
-      if ('processLocally' in instance) instance.processLocally = mode === 'offline';
+      try {
+        if ('processLocally' in instance) instance.processLocally = mode === 'offline';
+        if (mode === 'offline' && instance.processLocally !== true) throw new Error('Local processing was not enabled');
+      } catch { requestOnlineConsent('The browser could not enable local recognition.'); return; }
       configureSpeechFeatures(instance);
 
       instance.onstart = () => {
         if (recognition !== instance) return;
         if (finishing) return;
         speechActive = true;
+        setMode(mode);
         updateRecordingUI();
         listeningDetail = mode === 'offline' ? `On-device · ${speechLanguage}` : `Browser recognition · ${speechLanguage}`;
         setSpeechStatus('Listening', (holdSource ? 'Release to finish · ' : 'Speak or edit · ') + listeningDetail, 'listening');
@@ -1082,6 +1101,7 @@
         speechError = event.error || 'unknown';
         if (finishing) {
           stopForEditing('Visible text kept.');
+          setMode('error');
           setSpeechStatus('Could not finish', 'The browser did not finish recognition. Check the visible text.', 'error');
           return;
         }
@@ -1092,8 +1112,7 @@
           return;
         }
         if (mode === 'offline' && ['language-not-supported', 'service-not-allowed', 'network'].includes(speechError)) {
-          forceBrowserService = true;
-          setSpeechStatus('Connecting…', 'Switching to browser recognition. Not listening yet.', 'connecting');
+          requestOnlineConsent(`Local recognition failed (${speechError}).`);
           return;
         }
         const messages = {
@@ -1111,7 +1130,7 @@
           holdSource = null;
           holdPointerId = null;
           speechActive = false;
-          setMode('none');
+          setMode('error');
         }
         updateRecordingUI();
       };
@@ -1127,9 +1146,11 @@
         updateRecordingUI();
         if (!speechWanted) dictationRange = null;
         if (speechWanted) {
+          setMode('checking');
           setSpeechStatus('Connecting…', 'Reconnecting. Wait for Listening before speaking.', 'connecting');
           restartTimer = setTimeout(startRecognition, 250);
         } else if (!speechError || speechError === 'aborted') {
+          setMode('paused');
           setSpeechStatus('Paused', 'Text kept. Ready for your next dictation.', 'paused');
         }
       };
@@ -1139,14 +1160,14 @@
         recognition = null;
         speechActive = false;
         if (mode === 'offline' && error.name === 'NotSupportedError') {
-          forceBrowserService = true;
-          restartTimer = setTimeout(startRecognition, 250);
+          requestOnlineConsent('Local recognition could not start.');
           return;
         }
         speechWanted = false;
         holdSource = null;
         holdPointerId = null;
         updateRecordingUI();
+        setMode('error');
         setSpeechStatus('Could not start dictation', 'Check your browser and microphone permissions.', 'error');
         console.warn('Recognition could not start:', error);
       }
@@ -1172,6 +1193,7 @@
         finishSpeechSegment();
         dictationRange = null;
         updateRecordingUI();
+        setMode('paused');
         setSpeechStatus('Paused', 'Not listening. Ready for your next dictation.', 'paused');
         return;
       }
@@ -1182,6 +1204,7 @@
       finishTimer = setTimeout(() => {
         if (!finishing) return;
         stopForEditing('Visible text kept; the last words may be incomplete.');
+        setMode('error');
         setSpeechStatus('Could not finish', 'Recognition timed out. Check the last words.', 'error');
       }, 5000);
       try { recognition.stop(); } catch { stopForEditing('Visible text kept. Ready for your next dictation.'); }
@@ -1203,7 +1226,7 @@
       dictationRange = { start: editor.selectionEnd, end: editor.selectionEnd };
       speechUndoOpen = false;
       speechWanted = true;
-      forceBrowserService = false;
+      getElement('online-consent').hidden = true;
       disableHints = false;
       paused = false;
       updateRecordingUI();
@@ -1377,6 +1400,7 @@
 
     const actionShortcuts = [
       ['n', 'new-button', 'New note'],
+      ['o', 'allow-online', 'Allow online mode'],
       ['c', 'copy-button', 'Copy'],
       ['l', 'selection-correction', 'Add correction from selected text'],
       ['m', 'format-toggle', 'Show formatting'],
@@ -1528,6 +1552,13 @@
     });
     window.addEventListener('blur', () => {
       if (holdSource || finishing) stopForEditing('Hold ended because the window lost focus. Visible text kept.');
+    });
+    getElement('allow-online').addEventListener('click', () => {
+      if (getElement('online-consent').hidden) return;
+      forceBrowserService = true;
+      getElement('online-consent').hidden = true;
+      setMode('none');
+      setSpeechStatus('Ready for online dictation', 'Press Start or hold Hold to talk. Audio may be sent to the browser’s speech service.');
     });
     recordButton.addEventListener('click', toggleRecording);
     getElement('save-speech-settings').addEventListener('click', saveSpeechSettings);

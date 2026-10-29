@@ -31,6 +31,8 @@ async function setup(t, text = 'Hello world!', position = 6, device = {}) {
   await page.locator('#editor').fill(text);
   await page.locator('#editor').evaluate((e, p) => e.setSelectionRange(p, p), position);
   await page.locator('#record-button').click();
+  await page.locator('#allow-online').click();
+  await page.locator('#record-button').click();
   await page.waitForFunction(() => window.sessions.some(s => s.onresult));
   return page;
 }
@@ -810,6 +812,8 @@ test('selected misspelling opens a correction form and persists a future dictati
   await page.reload();
   await page.locator('#editor').evaluate(e => e.setSelectionRange(e.value.length, e.value.length));
   await page.locator('#record-button').click();
+  await page.locator('#allow-online').click();
+  await page.locator('#record-button').click();
   await emit(page, [['keen wah', true]]);
   assert.equal(await value(page), 'keen wah quinoa');
 });
@@ -858,6 +862,8 @@ test('case-only schubidam correction applies immediately and after reload', asyn
   assert.equal(await value(page), 'schubidam Schubidam');
   await page.reload();
   await page.locator('#editor').evaluate(e => e.setSelectionRange(e.value.length, e.value.length));
+  await page.locator('#record-button').click();
+  await page.locator('#allow-online').click();
   await page.locator('#record-button').click();
   await emit(page, [['schubidam', true]]);
   assert.equal(await value(page), 'schubidam Schubidam Schubidam');
@@ -1029,6 +1035,7 @@ test('quick release during preparation invalidates the pending hold start', asyn
   const page = await setup(t, '', 0);
   await page.locator('#record-button').click();
   await page.evaluate(() => {
+    forceBrowserService = false;
     SpeechRecognition.prototype.processLocally = false;
     SpeechRecognition.available = () => new Promise(resolve => { window.resolveAvailability = resolve; });
     SpeechRecognition.install = async () => true;
@@ -1115,4 +1122,60 @@ test('permission failure clears hold state and never restarts on key release', a
   assert.equal(await page.locator('#record-button').isEnabled(), true);
   await releaseHoldKeys(page);
   assert.equal(await page.evaluate(() => sessions.filter(s => s.onresult).length), 2);
+});
+
+
+test('initial mode is neutral and unavailable local speech requires explicit online consent', async t => {
+  const page = await setup(t);
+  await page.reload();
+  assert.equal(await page.locator('#mode-badge').textContent(), 'Not started');
+  await page.locator('#record-button').click();
+  await page.locator('#online-consent').waitFor({state: 'visible'});
+  assert.equal(await page.evaluate(() => sessions.filter(s => s.onresult).length), 0);
+  assert.equal(await page.locator('#mode-badge').textContent(), 'Error');
+  await page.locator('#allow-online').click();
+  assert.equal(await page.evaluate(() => sessions.filter(s => s.onresult).length), 0);
+  await page.locator('#record-button').click();
+  assert.equal(await page.locator('#mode-badge').textContent(), 'Online');
+  await page.locator('#record-button').click();
+  assert.equal(await page.locator('#mode-badge').textContent(), 'Paused');
+});
+
+test('offline is shown only on start and local failure never starts an online session', async t => {
+  const page = await setup(t);
+  await page.locator('#record-button').click();
+  await page.evaluate(() => {
+    forceBrowserService = false;
+    SpeechRecognition.prototype.processLocally = false;
+    SpeechRecognition.available = async () => 'available';
+    SpeechRecognition.prototype.start = function() {};
+  });
+  await page.locator('#record-button').click();
+  await page.waitForFunction(() => sessions.at(-1).onresult);
+  assert.equal(await page.locator('#mode-badge').textContent(), 'Checking…');
+  assert.equal(await page.evaluate(() => sessions.at(-1).processLocally), true);
+  await page.evaluate(() => sessions.at(-1).onstart());
+  assert.equal(await page.locator('#mode-badge').textContent(), 'Offline');
+  const count = await page.evaluate(() => sessions.length);
+  await page.evaluate(() => sessions.at(-1).onerror({error:'network'}));
+  await page.waitForTimeout(350);
+  assert.equal(await page.evaluate(() => sessions.length), count);
+  assert.equal(await page.locator('#mode-badge').textContent(), 'Error');
+  assert.equal(await page.locator('#online-consent').isVisible(), true);
+  assert.equal(await page.locator('#record-button').getAttribute('aria-pressed'), 'false');
+});
+
+test('synchronous start failure clears pending offline indication', async t => {
+  const page = await setup(t);
+  await page.locator('#record-button').click();
+  await page.evaluate(() => {
+    forceBrowserService = false;
+    SpeechRecognition.prototype.processLocally = false;
+    SpeechRecognition.available = async () => 'available';
+    SpeechRecognition.prototype.start = () => { throw new DOMException('unsupported', 'NotSupportedError'); };
+  });
+  await page.locator('#record-button').click();
+  await page.locator('#online-consent').waitFor({state: 'visible'});
+  assert.equal(await page.locator('#mode-badge').textContent(), 'Error');
+  assert.equal(await page.locator('#hold-button').getAttribute('aria-pressed'), 'false');
 });
