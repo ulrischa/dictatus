@@ -1126,17 +1126,17 @@ test('initial mode is neutral and unavailable local speech requires explicit onl
   const page = await setup(t);
   await page.evaluate(() => localStorage.removeItem('dictatus_online_allowed'));
   await page.reload();
-  assert.equal(await page.locator('#mode-badge').textContent(), 'Not started');
+  assert.equal(await page.locator('#speech-mode').textContent(), 'Not started');
   await page.locator('#record-button').click();
   await page.locator('#online-consent').waitFor({state: 'visible'});
   assert.equal(await page.evaluate(() => sessions.filter(s => s.onresult).length), 0);
-  assert.equal(await page.locator('#mode-badge').textContent(), 'Error');
+  assert.equal(await page.locator('#speech-mode').textContent(), 'Error');
   await page.locator('#allow-online').click();
   assert.equal(await page.evaluate(() => sessions.filter(s => s.onresult).length), 0);
   await page.locator('#record-button').click();
-  assert.equal(await page.locator('#mode-badge').textContent(), 'Online');
+  assert.equal(await page.locator('#speech-mode').textContent(), 'Online');
   await page.locator('#record-button').click();
-  assert.equal(await page.locator('#mode-badge').textContent(), 'Paused');
+  assert.equal(await page.locator('#speech-mode').textContent(), 'Paused');
 });
 
 test('offline is shown only on start and local failure never starts an online session', async t => {
@@ -1151,15 +1151,15 @@ test('offline is shown only on start and local failure never starts an online se
   });
   await page.locator('#record-button').click();
   await page.waitForFunction(() => sessions.at(-1).onresult);
-  assert.equal(await page.locator('#mode-badge').textContent(), 'Checking…');
+  assert.equal(await page.locator('#speech-mode').textContent(), 'Checking…');
   assert.equal(await page.evaluate(() => sessions.at(-1).processLocally), true);
   await page.evaluate(() => sessions.at(-1).onstart());
-  assert.equal(await page.locator('#mode-badge').textContent(), 'Offline');
+  assert.equal(await page.locator('#speech-mode').textContent(), 'Offline');
   const count = await page.evaluate(() => sessions.length);
   await page.evaluate(() => sessions.at(-1).onerror({error:'network'}));
   await page.waitForTimeout(350);
   assert.equal(await page.evaluate(() => sessions.length), count);
-  assert.equal(await page.locator('#mode-badge').textContent(), 'Error');
+  assert.equal(await page.locator('#speech-mode').textContent(), 'Error');
   assert.equal(await page.locator('#online-consent').isVisible(), true);
   assert.equal(await page.locator('#record-button').getAttribute('aria-pressed'), 'false');
 });
@@ -1176,7 +1176,7 @@ test('synchronous start failure clears pending offline indication', async t => {
   });
   await page.locator('#record-button').click();
   await page.locator('#online-consent').waitFor({state: 'visible'});
-  assert.equal(await page.locator('#mode-badge').textContent(), 'Error');
+  assert.equal(await page.locator('#speech-mode').textContent(), 'Error');
   assert.equal(await page.locator('#record-button').getAttribute('aria-pressed'), 'false');
 });
 
@@ -1327,9 +1327,9 @@ test('unavailable translation pairs disable generation and mobile dialog fits vi
 test('online consent persists across reloads and can be revoked immediately', async t => {
   const page = await setup(t);
   await page.reload();
-  assert.equal(await page.locator('#mode-badge').textContent(), 'Not started');
+  assert.equal(await page.locator('#speech-mode').textContent(), 'Not started');
   await page.locator('#record-button').click();
-  assert.equal(await page.locator('#mode-badge').textContent(), 'Online');
+  assert.equal(await page.locator('#speech-mode').textContent(), 'Online');
   assert.equal(await page.locator('#online-consent').isVisible(), false);
   await page.locator('#settings-toggle').click();
   assert.equal(await page.locator('#online-allowed').inputValue(), 'prefer-local');
@@ -1349,14 +1349,14 @@ test('online permission still prefers local and allows fallback after a local fa
     SpeechRecognition.available = async () => 'available';
   });
   await page.locator('#record-button').click();
-  assert.equal(await page.locator('#mode-badge').textContent(), 'Offline');
+  assert.equal(await page.locator('#speech-mode').textContent(), 'Offline');
   await page.evaluate(() => sessions.at(-1).onerror({error:'network'}));
-  await page.waitForFunction(() => document.getElementById('mode-badge').textContent === 'Online');
+  await page.waitForFunction(() => document.getElementById('speech-mode').textContent === 'Online');
   assert.equal(await page.locator('#online-consent').isVisible(), false);
   assert.equal(await page.evaluate(() => sessions.at(-1).processLocally), false);
   await page.locator('#record-button').click();
   await page.locator('#record-button').click();
-  assert.equal(await page.locator('#mode-badge').textContent(), 'Offline');
+  assert.equal(await page.locator('#speech-mode').textContent(), 'Offline');
 });
 
 test('dictation language pauses recording, updates spelling and survives reload', async t => {
@@ -1502,4 +1502,23 @@ test('text actions follow undo, redo and Format above the editor and wrap withou
     assert.ok(menu.y >= controls.y + controls.height);
     await page.keyboard.press('Escape');
   }
+});
+
+
+test('compact speech status and text dialogs retain mode and read-only previews', async t => {
+  const page = await setup(t);
+  assert.equal(await page.locator('.recording-help, .mode-badge').count(), 0);
+  assert.equal(await page.locator('#speech-mode').innerText(), 'Online');
+  assert.equal(await page.locator('#speech-mode').isVisible(), true);
+  await enableTextTools(page);
+  await page.locator('#text-rewrite').click();
+  assert.equal(await page.locator('#text-scope').count(), 0);
+  for (const id of ['text-original', 'text-result']) {
+    assert.equal(await page.locator('#' + id).evaluate(e => e.readOnly), true);
+    assert.notEqual(await page.locator('#' + id).evaluate(e => getComputedStyle(e).backgroundColor), 'rgb(255, 255, 255)');
+  }
+  const original = await page.locator('#text-original').boundingBox();
+  const preview = await page.locator('#text-result').boundingBox();
+  assert.ok(original.height < preview.height);
+  assert.equal(await page.locator('#text-run').evaluate(e => getComputedStyle(e).backgroundColor), await page.locator('#text-apply').evaluate(e => getComputedStyle(e).backgroundColor));
 });

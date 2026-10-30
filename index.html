@@ -58,16 +58,14 @@
     .dot[data-phase="connecting"], .dot[data-phase="finishing"] { background: #b47a15; }
     .dot[data-phase="error"] { background: #b5263e; }
     .button-wide { width: 100%; min-height: 60px; font-size: 1rem; border-radius: 8px; letter-spacing: .01em; }
-    .speech-info { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; padding: 12px 1px 13px; }
-    .status-title { display: flex; align-items: center; gap: 9px; font-size: .85rem; font-weight: 650; }
-    .speech-info > div { flex: 1 1 180px; min-width: 0; }
-    .status-caption { font-size: .78rem; color: var(--muted); margin: 2px 0 0 18px; max-width: 670px; overflow-wrap: anywhere; }
+    .speech-info { padding: 8px 1px; font-size: .78rem; line-height: 1.5; overflow-wrap: anywhere; }
+    .speech-info .dot { display: inline-block; margin-right: 6px; }
+    #status-title { font-weight: 650; }
+    .status-caption { color: var(--muted); }
+    #speech-mode:not([hidden])::before, .status-caption:not(:empty)::before { content: ' · '; }
     .dot { width: 9px; height: 9px; flex: 0 0 9px; border-radius: 50%; background: #a2aec1; }
     .dot.live { background: #137353; box-shadow: 0 0 0 5px rgba(19,115,83,.11); animation: pulse 1.3s infinite; }
     @keyframes pulse { 50% { box-shadow: 0 0 0 9px rgba(19,115,83,0); } }
-    .mode-badge { padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px; flex-shrink: 0; font-size: .74rem; font-weight: 650; color: #4f607d; background: #f9fafc; }
-    .mode-badge.offline { color: #086946; background: #e8f8f1; border-color: #ade6cc; }
-    .mode-badge.browser { color: #7b5620; background: #fff8e8; border-color: #e6d9ac; }
     .editor-wrap { position: relative; }
     .editor-actions { position: relative; }
     .editor-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; min-height: 44px; margin-bottom: 4px; }
@@ -147,24 +145,29 @@
       .correction-fields { grid-template-columns: 1fr; gap: 0; }
       .entry-line { flex-wrap: wrap; }
       .entry-line input { flex-basis: 170px; }
-      .status-caption { margin-left: 18px; max-width: 75vw; }
-      .mode-badge { border-radius: 5px; }
     }
     @media (any-pointer: coarse) { .quick-help { display: none; } }
     @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
     .text-tools { display: contents; }
     .text-tools[hidden], .text-tools button[hidden] { display: none; }
-    #text-dialog { width: min(720px, calc(100% - 24px)); max-height: 90dvh; box-sizing: border-box; border: 1px solid var(--line); border-radius: 12px; padding: 20px; color: var(--text); }
+    #text-dialog { width: min(720px, calc(100% - 24px)); max-height: 90dvh; box-sizing: border-box; border: 1px solid var(--line); border-radius: 12px; padding: 16px; color: var(--text); }
     #text-dialog::backdrop { background: #10283b66; }
     #text-dialog h2 { margin: 0 0 8px; }
     #text-dialog select { max-width: 100%; min-height: 40px; padding: 6px 9px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); font-size: 16px; }
-    #text-dialog textarea { border: 1px solid var(--line); border-radius: 6px; color: var(--text); background: var(--surface); width: 100%; min-height: 100px; height: 150px; box-sizing: border-box; font: inherit; padding: 10px; }
-    #text-dialog label { display: block; margin: 10px 0 4px; }
+    #text-dialog textarea { border: 1px solid var(--line); border-radius: 6px; color: var(--text); background: #f0f2f4; width: 100%; min-height: 3.5rem; height: 7rem; box-sizing: border-box; font: inherit; padding: 10px; }
+    #text-dialog label { display: block; margin: 6px 0 3px; font-size: .85rem; }
+    #text-dialog #text-original { height: 4rem; color: var(--muted); }
+    #text-status { margin: 6px 0 0; font-size: .78rem; color: var(--muted); }
+    #text-status:empty { display: none; }
+    .text-language-fields { display: flex; flex-wrap: wrap; gap: 6px 12px; }
+    #text-dialog .text-language-fields label { display: flex; align-items: center; gap: 6px; }
+    #text-dialog .text-language-fields label[hidden] { display: none; }
     #text-dialog label[hidden] { display: none; }
-    #text-options { margin-top: 12px; font-size: .85rem; }
+    #text-options { margin-top: 6px; font-size: .85rem; }
     .text-option-row { display: flex; flex-wrap: wrap; gap: 12px; }
     #text-options[hidden], .text-option-row[hidden] { display: none; }
-    .text-dialog-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+    .text-dialog-actions .button { padding: 8px 10px; font-size: .85rem; }
+    .text-dialog-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
   </style>
 </head>
 <body>
@@ -182,13 +185,8 @@
         <div class="recording-controls">
         <button type="button" id="record-button" title="Tap to start / pause; hold to talk" aria-keyshortcuts="Control+Shift+Space Meta+Shift+Space Alt+Shift+Space" class="button primary button-wide" aria-pressed="false">● Start dictation</button>
         </div>
-        <p class="recording-help" style="font-size:.78rem;color:var(--muted);margin:6px 0">Tap to start / pause · Hold to talk</p>
         <div class="speech-info" role="status" aria-live="polite">
-          <div>
-            <div class="status-title"><span class="dot" id="status-dot"></span><span id="status-title">Ready to dictate</span></div>
-            <p class="status-caption" id="status-help">Local recognition is checked when you start.</p>
-          </div>
-          <span id="mode-badge" class="mode-badge">Not started</span>
+          <span class="dot" id="status-dot" aria-hidden="true"></span><span id="status-title">Ready to dictate</span><span id="speech-mode" hidden>Not started</span><span class="status-caption" id="status-help">Local recognition is checked when you start.</span>
         </div>
 
         <div id="online-consent" hidden>
@@ -316,9 +314,10 @@
   </main>
   <dialog id="text-dialog" aria-labelledby="text-dialog-title">
     <h2 id="text-dialog-title">Fix text</h2>
-    <p id="text-scope"></p>
+    <div class="text-language-fields">
     <label>Text language <select id="text-source-language"></select></label>
     <label id="text-target-field" hidden>Translate to <select id="text-target-language"></select></label>
+    </div>
     <details id="text-options" hidden>
       <summary>Options</summary>
       <div class="text-option-row" id="rewrite-options">
@@ -330,11 +329,11 @@
         <label>Style <select id="summary-type"><option value="key-points">Bullet points</option><option value="tldr">Paragraph</option></select></label>
       </div>
     </details>
-    <label for="text-original">Original</label><textarea id="text-original" readonly></textarea>
-    <label for="text-result">Preview</label><textarea id="text-result" readonly></textarea>
+    <label for="text-original" id="text-original-label">Original · read only</label><textarea id="text-original" readonly></textarea>
+    <label for="text-result">Preview · read only</label><textarea id="text-result" readonly></textarea>
     <p id="text-status" role="status" aria-live="polite"></p>
     <div class="text-dialog-actions">
-      <button type="button" class="button" id="text-run" disabled>Generate preview</button>
+      <button type="button" class="button primary" id="text-run" disabled>Generate preview</button>
       <button type="button" class="button primary" id="text-apply" disabled>Apply</button>
       <button type="button" class="button" id="text-cancel" autofocus>Cancel</button>
     </div>
@@ -352,7 +351,7 @@
     const editor = getElement('editor');
     const titleInput = getElement('note-title');
     const recordButton = getElement('record-button');
-    const modeBadge = getElement('mode-badge');
+    const modeLabel = getElement('speech-mode');
     const recordingControls = recordButton.closest('.recording-controls');
     const updateRecordingHeight = () => {
       document.documentElement.style.setProperty('--recording-controls-height', `${recordingControls.getBoundingClientRect().height}px`);
@@ -887,11 +886,11 @@
 
     function setMode(mode) {
       speechMode = mode;
-      modeBadge.className = `mode-badge${mode === 'offline' ? ' offline' : mode === 'browser' ? ' browser' : ''}`;
-      modeBadge.textContent = mode === 'offline' ? 'Offline' :
+      modeLabel.hidden = mode !== 'offline' && mode !== 'browser';
+      modeLabel.textContent = mode === 'offline' ? 'Offline' :
         mode === 'browser' ? 'Online' :
         mode === 'checking' ? 'Checking…' : mode === 'error' ? 'Error' : mode === 'paused' ? 'Paused' : 'Not started';
-      modeBadge.title = mode === 'browser' ? 'Online mode: remote processing is allowed. The browser chooses the actual processing location.' : '';
+      modeLabel.title = mode === 'browser' ? 'Online mode: remote processing is allowed. The browser chooses the actual processing location.' : '';
     }
 
     function updateRecordingUI() {
@@ -1172,7 +1171,7 @@
         speechActive = true;
         setMode(mode);
         updateRecordingUI();
-        listeningDetail = mode === 'offline' ? `On-device · ${speechLanguage}` : `Browser recognition · ${speechLanguage}`;
+        listeningDetail = speechLanguage;
         setSpeechStatus('Listening', (holdSource ? 'Release to finish · ' : 'Speak or edit · ') + listeningDetail, 'listening');
       };
       instance.onaudioend = () => {
@@ -1941,7 +1940,7 @@
       textJob = { kind, snapshot: editorSnapshot(), revision: editorRevision, start: start === end ? 0 : start, end: start === end ? editor.value.length : end };
       textJob.input = editor.value.slice(textJob.start, textJob.end);
       getElement('text-dialog-title').textContent = textTools[kind].label;
-      getElement('text-scope').textContent = start === end ? 'Entire text · review before replacing' : 'Selected text · review before replacing';
+      getElement('text-original-label').textContent = start === end ? 'Original · read only' : 'Selection · read only';
       getElement('text-original').value = textJob.input;
       getElement('text-result').value = '';
       getElement('text-source-language').value = textLanguage;
