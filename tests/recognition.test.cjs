@@ -1485,3 +1485,21 @@ test('Markdown downloads use short portable names even without a title', async t
     assert.equal(await page.evaluate(input => safeFilename(input), input), expected);
   }
 });
+
+test('text actions follow undo, redo and Format above the editor and wrap without overflow', async t => {
+  const page = await setup(t);
+  await enableTextTools(page);
+  const expected = ['undo-button', 'redo-button', 'format-toggle', 'text-rewrite', 'text-summarize', 'text-translate', 'text-fix'];
+  assert.deepEqual(await page.locator('.editor-controls button:visible').evaluateAll(buttons => buttons.map(b => b.id)), expected);
+  for (const width of [320, 390, 768, 1440]) {
+    await page.setViewportSize({width, height:900});
+    const controls = await page.locator('.editor-controls').boundingBox();
+    const editorBox = await page.locator('#editor').boundingBox();
+    assert.ok(controls.y + controls.height <= editorBox.y);
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    await page.locator('#format-toggle').click();
+    const menu = await page.locator('#format-menu').boundingBox();
+    assert.ok(menu.y >= controls.y + controls.height);
+    await page.keyboard.press('Escape');
+  }
+});
