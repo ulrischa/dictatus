@@ -183,7 +183,7 @@
     <div class="layout">
       <section class="panel" aria-label="Dictation editor">
         <div class="recording-controls">
-        <button type="button" id="record-button" title="Tap to start / pause; hold to talk" aria-keyshortcuts="Control+Shift+Space Meta+Shift+Space Alt+Shift+Space" class="button primary button-wide" aria-pressed="false">● Start dictation</button>
+        <button type="button" id="record-button" title="Tap to start / pause; hold to talk" aria-keyshortcuts="Control+Shift+Space Meta+Shift+Space" class="button primary button-wide" aria-pressed="false">● Start dictation</button>
         </div>
         <div class="speech-info" role="status" aria-live="polite">
           <span class="dot" id="status-dot" aria-hidden="true"></span><span id="status-title">Ready to dictate</span><span id="speech-mode" hidden>Not started</span><span class="status-caption" id="status-help">Local recognition is checked when you start.</span>
@@ -1547,10 +1547,9 @@
         }
         list.append(row);
       };
-      recordButton.title = 'Pause / resume dictation (Ctrl/Cmd + Shift + Space)';
-      addRow('Pause / resume dictation', 'Ctrl/Cmd + Shift + Space');
-      addRow('Hold to talk (release to finish)', 'Alt + Shift + Space');
-      addRow('Hold the focused talk button', 'Space / Enter');
+      recordButton.title = 'Ctrl/Cmd + Shift + Space: tap to start/pause; hold to talk';
+      addRow('Start / pause dictation', 'Ctrl/Cmd + Shift + Space — short press');
+      addRow('Hold to talk (release to finish)', 'Ctrl/Cmd + Shift + Space — hold');
       for (const [key, id, name] of actionShortcuts) {
         const element = getElement(id);
         element.title = `${name} (Alt + Shift + ${key.toUpperCase()})`;
@@ -1576,9 +1575,16 @@
     function handleShortcut(event) {
       if (getElement('text-dialog').open) return;
       if (event.defaultPrevented || event.isComposing || composing || event.getModifierState('AltGraph')) return;
-      if (event.code === 'Space' && event.altKey && event.shiftKey && !event.ctrlKey && !event.metaKey) {
+      if (event.code === 'Space' && (shortcutPress || (event.shiftKey && (event.ctrlKey || event.metaKey) && !event.altKey))) {
         event.preventDefault();
-        if (!event.repeat) beginHold('shortcut');
+        if (event.repeat || shortcutPress || pressKey || pressPointer !== null || finishing || holdSource) return;
+        const press = { modifier: event.metaKey ? 'metaKey' : 'ctrlKey', ended: false, long: false, timer: null };
+        shortcutPress = press;
+        press.timer = setTimeout(() => {
+          if (shortcutPress !== press || press.ended) return;
+          press.long = true;
+          beginHold('shortcut');
+        }, HOLD_DELAY);
         return;
       }
       if (event.repeat || holdSource || finishing) return;
@@ -1600,10 +1606,7 @@
         return;
       }
       if (!event.shiftKey || !(event.ctrlKey || event.metaKey) || event.altKey) return;
-      if (event.code === 'Space') {
-        event.preventDefault();
-        toggleRecording();
-      } else if (/^Digit[0-9]$/.test(event.code)) {
+      if (/^Digit[0-9]$/.test(event.code)) {
         event.preventDefault();
         const number = Number(event.code.slice(-1));
         formatMarkdown(formatShortcuts[number === 0 ? 9 : number - 1]);
@@ -1638,12 +1641,16 @@
     document.addEventListener('selectionchange', updateSelectionCorrection);
     document.addEventListener('focusin', updateSelectionCorrection);
     // A short press toggles; a deliberate hold owns a temporary recording session.
+    const HOLD_DELAY = 300;
+    let shortcutPress = null;
     let pressTimer = null;
     let pressPointer = null;
     let pressKey = null;
     let suppressPressClick = false;
     let longPress = false;
     function cancelPendingPress() {
+      if (shortcutPress) clearTimeout(shortcutPress.timer);
+      shortcutPress = null;
       clearTimeout(pressTimer);
       pressTimer = null;
       pressPointer = null;
@@ -1657,7 +1664,7 @@
         longPress = true;
         suppressPressClick = true;
         beginHold(source);
-      }, 300);
+      }, HOLD_DELAY);
     }
     recordButton.addEventListener('contextmenu', event => event.preventDefault());
     recordButton.addEventListener('pointerdown', event => {
@@ -1695,9 +1702,19 @@
       toggleRecording();
     });
     document.addEventListener('keyup', event => {
-      if (holdSource === 'shortcut' && (event.code === 'Space' || !event.altKey || !event.shiftKey)) {
+      if (shortcutPress) {
+        const press = shortcutPress;
+        const released = event.code === 'Space' || !event.shiftKey || !event[press.modifier];
+        if (!released) return;
         event.preventDefault();
-        endHold('shortcut');
+        clearTimeout(press.timer);
+        if (!press.ended) {
+          press.ended = true;
+          if (holdSource === 'shortcut') endHold('shortcut');
+          else if (event.code === 'Space' && !press.long) toggleRecording();
+        }
+        // Consume Space repeats until keyup even when a modifier was released first.
+        if (event.code === 'Space') shortcutPress = null;
       } else if (event.code === pressKey) {
         event.preventDefault();
         const wasLong = longPress;

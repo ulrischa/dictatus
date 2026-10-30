@@ -53,8 +53,8 @@ Open **Keyboard shortcuts** in the app for the complete action list. Button tool
 
 | Action | Shortcut |
 | --- | --- |
-| Hold to talk (release to finish) | Alt + Shift + Space |
-| Pause / resume at cursor | Ctrl/Cmd + Shift + Space |
+| Hold to talk (release to finish) | Ctrl/Cmd + Shift + Space — hold |
+| Start / pause at cursor | Ctrl/Cmd + Shift + Space — short press |
 | New note | Alt + Shift + N |
 | Show / hide archive | Alt + Shift + B |
 | Show formatting | Alt + Shift + M |
@@ -124,7 +124,7 @@ The Show / Hide archive button below New collapses the sidebar and gives its wid
 
 ### Hold to talk and recording status
 
-A single dictation button supports both gestures: **tap to start/pause**, or **hold for at least 300 ms to talk until release**. Speak when the status says **Listening**. Releasing a hold finishes the phrase without starting a continuous session. While continuous dictation is running, the button pauses it; holding does not take over that session. Short Space/Enter presses on the focused button toggle; holding them uses hold-to-talk. **Ctrl/Cmd + Shift + Space** toggles, **Alt + Shift + Space** holds immediately without the gesture delay. Browser or operating-system shortcuts may take precedence.
+A single dictation button supports both gestures: **tap to start/pause**, or **hold for at least 300 ms to talk until release**. Speak when the status says **Listening**. Releasing a hold finishes the phrase without starting a continuous session. While continuous dictation is running, the button pauses it; holding does not take over that session. **Ctrl/Cmd + Shift + Space** uses the same gesture: a short press toggles on release; holding for at least 300 ms starts a temporary recording. Releasing Space or a required modifier ends the hold. Releasing a modifier before the hold starts cancels the pending action. Plain Space and Enter remain normal text input; they only activate dictation when the recording button itself has keyboard focus. Browser or operating-system shortcuts may take precedence.
 
 On release the app requests `SpeechRecognition.stop()` and shows **Finishing** while accepting the last result. The browser attempts to finalize captured audio; delivery is not guaranteed. If it does not finish within five seconds, the visible text is retained and a timeout is shown. Editing or moving the editor caret while finishing invalidates remaining results to protect your changes. A release during preparation cancels that pending start. Android sessions reconnect only while the hold is still active. Pointer cancellation or lost capture ends a pointer hold; switching away from the window or hiding the app cancels a hold and keeps visible text.
 

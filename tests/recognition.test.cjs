@@ -930,14 +930,15 @@ test('archive collapses, frees editor width, persists and reopens for search', a
 });
 
 async function holdKeys(page) {
-  await page.keyboard.down('Alt');
+  await page.keyboard.down('Control');
   await page.keyboard.down('Shift');
   await page.keyboard.down('Space');
+  await page.waitForTimeout(350);
 }
 async function releaseHoldKeys(page) {
   await page.keyboard.up('Space');
   await page.keyboard.up('Shift');
-  await page.keyboard.up('Alt');
+  await page.keyboard.up('Control');
 }
 
 test('hold shortcut accepts final words after release and never reconnects afterward', async t => {
@@ -995,7 +996,7 @@ test('releasing a modifier, pointer cancellation and window blur all end hold re
   await page.locator('#record-button').click();
   await holdKeys(page);
   await page.waitForFunction(() => sessions.filter(s => s.onresult).length === 2);
-  await page.keyboard.up('Alt');
+  await page.keyboard.up('Control');
   assert.equal(await page.locator('#record-button').getAttribute('aria-pressed'), 'false');
   await page.keyboard.up('Space');
   await page.keyboard.up('Shift');
@@ -1521,4 +1522,51 @@ test('compact speech status and text dialogs retain mode and read-only previews'
   const preview = await page.locator('#text-result').boundingBox();
   assert.ok(original.height < preview.height);
   assert.equal(await page.locator('#text-run').evaluate(e => getComputedStyle(e).backgroundColor), await page.locator('#text-apply').evaluate(e => getComputedStyle(e).backgroundColor));
+});
+
+test('shared dictation shortcut toggles on short release and preserves plain typing', async t => {
+  const page = await setup(t, '', 0);
+  await page.locator('#record-button').click();
+  await page.locator('#editor').focus();
+  await page.keyboard.press('Space');
+  await page.keyboard.press('Enter');
+  assert.equal(await value(page), ' \n');
+  await page.keyboard.press('Control+Shift+Space');
+  await page.waitForFunction(() => document.getElementById('status-title').textContent === 'Listening');
+  await page.keyboard.press('Control+Shift+Space');
+  assert.equal(await page.locator('#status-title').textContent(), 'Paused');
+  assert.equal(await value(page), ' \n');
+  assert.doesNotMatch(await page.locator('#shortcut-list').innerText(), /Alt \+ Shift \+ Space|Space \/ Enter/);
+});
+
+test('early modifier release cancels pending shortcut and consumes subsequent Space repeats', async t => {
+  const page = await setup(t, '', 0);
+  await page.locator('#record-button').click();
+  await page.locator('#editor').focus();
+  await page.keyboard.down('Control');
+  await page.keyboard.down('Shift');
+  await page.keyboard.down('Space');
+  await page.keyboard.up('Control');
+  await page.keyboard.up('Shift');
+  await page.keyboard.down('Space');
+  await page.waitForTimeout(350);
+  await page.keyboard.up('Space');
+  assert.equal(await page.locator('#record-button').getAttribute('aria-pressed'), 'false');
+  assert.equal(await value(page), '');
+  assert.equal(await page.evaluate(() => sessions.filter(s => s.onresult).length), 1);
+});
+
+test('Meta shortcut holds and releases without inserting text', async t => {
+  const page = await setup(t, '', 0);
+  await page.locator('#record-button').click();
+  await page.locator('#editor').focus();
+  await page.keyboard.down('Meta');
+  await page.keyboard.down('Shift');
+  await page.keyboard.down('Space');
+  await page.waitForFunction(() => document.getElementById('status-title').textContent === 'Listening');
+  await page.keyboard.up('Shift');
+  await page.keyboard.up('Space');
+  await page.keyboard.up('Meta');
+  assert.equal(await page.locator('#status-title').textContent(), 'Paused');
+  assert.equal(await value(page), '');
 });
