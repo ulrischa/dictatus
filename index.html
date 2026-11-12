@@ -1011,9 +1011,23 @@
       return prefix + text + suffix;
     }
 
+    function capitalizeSpeechSentences(text, before) {
+      // Recompute from the current insertion context on every result. A pending flag
+      // would be lost on reconnect or incorrectly follow the cursor after an edit.
+      if (/[.!?][\s"'“”„‘’«»()\[\]]*$/u.test(before)) {
+        text = text.replace(/^([\s"'“”„‘’«»(\[]*)(\p{L})/u,
+          (_, prefix, letter) => prefix + letter.toLocaleUpperCase(speechLanguage));
+      }
+      return text.replace(/([.!?]["'“”’»)\]]*\s+["'“”„‘’«»(\[]*\s*)(\p{L})/gu,
+        (_, prefix, letter) => prefix + letter.toLocaleUpperCase(speechLanguage));
+    }
+
     function replaceSpeech(text, final = false) {
       if (!dictationRange) return;
       const { start, end } = dictationRange;
+      if (speechSettings.commands !== 'off') {
+        text = capitalizeSpeechSentences(text, editor.value.slice(0, start));
+      }
       const replacement = speechText(text, start, end);
       const snapshot = editorSnapshot();
       const follow = snapshot.start === snapshot.end && snapshot.end === end;

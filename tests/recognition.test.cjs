@@ -1570,3 +1570,56 @@ test('Meta shortcut holds and releases without inserting text', async t => {
   assert.equal(await page.locator('#status-title').textContent(), 'Paused');
   assert.equal(await value(page), '');
 });
+
+test('spoken sentence endings capitalize following words in the same final result', async t => {
+  const page = await setup(t, '', 0);
+  await emit(page, [['hallo Satzzeichen Punkt wie geht es Satzzeichen Fragezeichen gut Satzzeichen Ausrufezeichen schön Satzzeichen Komma weiter', true]]);
+  assert.equal(await value(page), 'hallo. Wie geht es? Gut! Schön, weiter');
+});
+
+test('sentence capitalization survives revised and withdrawn later hypotheses', async t => {
+  const page = await setup(t, '', 0);
+  const first = ['fertig Satzzeichen Punkt', true];
+  await emit(page, [first]);
+  await emit(page, [first, ['über', false]]);
+  assert.equal(await value(page), 'fertig. Über');
+  await emit(page, [first, ['übrigens geht es', false]]);
+  assert.equal(await value(page), 'fertig. Übrigens geht es');
+  await emit(page, [first]);
+  assert.equal(await value(page), 'fertig.');
+  await emit(page, [first, ['übrigens geht es', true]]);
+  assert.equal(await value(page), 'fertig. Übrigens geht es');
+});
+
+test('sentence capitalization survives Android recognition reconnects', async t => {
+  const page = await setup(t, '', 0, {userAgent:'Mozilla/5.0 (Linux; Android 14) Chrome/130.0 Mobile Safari/537.36', hasTouch:true});
+  await emit(page, [['fertig Satzzeichen Punkt', true]]);
+  await page.evaluate(() => sessions.at(-1).onend());
+  await page.waitForFunction(() => sessions.filter(s => s.onresult).length === 2);
+  await emit(page, [['weiter geht es', true]]);
+  assert.equal(await value(page), 'fertig. Weiter geht es');
+});
+
+test('capitalization follows the edited cursor context instead of a previous sentence flag', async t => {
+  const page = await setup(t, '', 0);
+  await emit(page, [['fertig Satzzeichen Punkt', true]]);
+  await page.locator('#editor').fill('mitten im Satz weiter');
+  await page.keyboard.press('Home');
+  for (let i = 0; i < 7; i++) await page.keyboard.press('ArrowRight');
+  await page.waitForFunction(() => sessions.filter(s => s.onresult).length === 2);
+  await emit(page, [['neuen', true]]);
+  assert.equal(await value(page), 'mitten neuen im Satz weiter');
+});
+
+test('capitalization preserves existing following text and punctuation that does not end a sentence', async t => {
+  const page = await setup(t, 'Vorher. danach bleibt klein', 8);
+  await emit(page, [['„überall“ und 3.14 sowie example.com Satzzeichen Komma weiter Satzzeichen Semikolon noch', true]]);
+  assert.equal(await value(page), 'Vorher. „Überall“ und 3.14 sowie example.com, weiter; noch danach bleibt klein');
+});
+
+test('disabled punctuation commands leave dictated casing unchanged', async t => {
+  const page = await setup(t, 'Ende. ', 6);
+  await settings(page, {commands:'off'});
+  await emit(page, [['klein bleibt klein', true]]);
+  assert.equal(await value(page), 'Ende. klein bleibt klein');
+});
